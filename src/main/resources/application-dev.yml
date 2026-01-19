@@ -1,0 +1,12 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017
+      database: learning_management_dev
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+logging:
+  level:
+    com.tutoring.learning: DEBUG
