@@ -1,12 +1,23 @@
 spring:
   data:
     mongodb:
-      uri: mongodb://localhost:27017
+      uri: mongodb://localhost:27017/learning_management_dev
       database: learning_management_dev
 
   kafka:
     bootstrap-servers: localhost:9092
 
+server:
+  port: 8083
+
 logging:
   level:
-    com.tutoring.learning: DEBUG
+    root: INFO
+    com.tcon.learning: DEBUG
+    org.springframework.data.mongodb: DEBUG
+    org.springframework.kafka: DEBUG
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/

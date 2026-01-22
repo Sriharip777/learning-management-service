@@ -1,32 +1,61 @@
 version: '3.8'
+
 services:
   learning-management-service:
     build: .
+    container_name: learning-management-service
     ports:
-      - "8082:8082"
-    #environment:
-     # SPRING_PROFILES_ACTIVE=docker
-     # SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/learning_db
-      #EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:8761/eureka/
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - MONGODB_URI=mongodb://mongodb:27017/learning_management
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_SERVER=http://eureka-server:8761/eureka/
     depends_on:
-      - mongo
+      - mongodb
+      - kafka
     networks:
       - tutoring-network
 
-  mongo:
+  mongodb:
     image: mongo:7.0
+    container_name: learning-mongodb
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: learning_db
+      - mongodb-data:/data/db
     networks:
       - tutoring-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: learning-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    networks:
+      - tutoring-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: learning-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - tutoring-network
+
+volumes:
+  mongodb-data:
 
 networks:
   tutoring-network:
     driver: bridge
-
-volumes:
-  mongo_data:

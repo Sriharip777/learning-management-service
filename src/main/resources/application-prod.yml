@@ -2,17 +2,30 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI}
-      database: learning_management_prod
+      database: ${MONGODB_DATABASE:learning_management}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    producer:
+      acks: all
+      retries: 5
+      compression-type: snappy
+    consumer:
+      properties:
+        max.poll.records: 500
+        max.poll.interval.ms: 300000
 
-eureka:
-  client:
-    service-url:
-      defaultZone: ${EUREKA_SERVER_URL}
+server:
+  port: ${SERVER_PORT:8083}
 
 logging:
   level:
     root: WARN
-    com.tutoring: INFO
+    com.tcon.learning: INFO
+    org.springframework.data.mongodb: WARN
+    org.springframework.kafka: WARN
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER}
