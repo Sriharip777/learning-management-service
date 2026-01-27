@@ -2,7 +2,6 @@ spring:
   application:
     name: learning-management-service
 
-  # MongoDB Configuration
   data:
     mongodb:
       uri: mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10
@@ -14,7 +13,7 @@ spring:
     consumer:
       group-id: learning-management-service
       auto-offset-reset: earliest
-      enable-auto-commit: true
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
@@ -63,7 +62,7 @@ logging:
     root: INFO
     com.tcon.learning: DEBUG
     org.springframework.data.mongodb: DEBUG
-    org.springframework.kafka: INFO
+    org.springframework.kafka: OFF
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
