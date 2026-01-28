@@ -8,6 +8,11 @@ spring:
       database: learning_management
       auto-index-creation: true
 
+  # DISABLE KAFKA - Add this section
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
