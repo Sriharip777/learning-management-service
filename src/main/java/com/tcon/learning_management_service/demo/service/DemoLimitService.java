@@ -86,4 +86,28 @@ public class DemoLimitService {
                     return limitRepository.save(newLimit);
                 });
     }
+    @Transactional
+    public DemoLimitDto initializeDemoLimit(String studentId) {
+        log.info("Initializing demo limit for new student: {}", studentId);
+
+        // Check if limit already exists
+        if (limitRepository.findByStudentId(studentId).isPresent()) {
+            log.warn("Demo limit already exists for student: {}", studentId);
+            return getDemoLimit(studentId); // Return existing
+        }
+
+        // Create new limit with 3 demos
+        DemoClassLimit newLimit = DemoClassLimit.builder()
+                .studentId(studentId)
+                .totalDemosAllowed(3)
+                .demosUsed(0)
+                .isLimitActive(true)
+                .build();
+
+        limitRepository.save(newLimit);
+        log.info("Demo limit initialized for student: {} with {} demos", studentId, 3);
+
+        return getDemoLimit(studentId);
+    }
+
 }

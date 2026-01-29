@@ -127,4 +127,12 @@ public class DemoClassController {
         limitService.resetDemoLimit(studentId);
         return ResponseEntity.ok(Map.of("message", "Demo limit reset successfully"));
     }
+
+    @PostMapping("/limit/{studentId}/initialize")
+    public ResponseEntity<DemoLimitDto> initializeDemoLimit(@PathVariable String studentId) {
+        log.info("Initializing demo limit for student: {}", studentId);
+        DemoLimitDto limit = limitService.initializeDemoLimit(studentId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(limit);
+    }
+
 }
