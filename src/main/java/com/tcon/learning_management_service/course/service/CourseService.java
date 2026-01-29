@@ -1,11 +1,12 @@
+//course service
 package com.tcon.learning_management_service.course.service;
-
 
 import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
 import com.tcon.learning_management_service.course.dto.CourseDto;
 import com.tcon.learning_management_service.course.dto.CourseUpdateRequest;
 import com.tcon.learning_management_service.course.entity.Course;
 import com.tcon.learning_management_service.course.entity.CourseStatus;
+import com.tcon.learning_management_service.course.entity.CourseEnrollment;
 import com.tcon.learning_management_service.course.repository.CourseEnrollmentRepository;
 import com.tcon.learning_management_service.course.repository.CourseRepository;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
@@ -192,6 +193,44 @@ public class CourseService {
         eventPublisher.publishCoursePublished(course);
     }
 
+    // ✅ ADD THIS NEW METHOD
+    @Transactional
+    public void unpublishCourse(String courseId, String teacherId) {
+        log.info("Unpublishing course: {}", courseId);
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        // Verify teacher ownership
+        if (!course.getTeacherId().equals(teacherId)) {
+            throw new IllegalArgumentException("Unauthorized: Teacher does not own this course");
+        }
+
+        // Check current status
+        if (course.getStatus() != CourseStatus.PUBLISHED) {
+            throw new IllegalArgumentException("Only published courses can be unpublished");
+        }
+
+        // Check if course has active enrollments
+        Long enrollmentCount = enrollmentRepository.countByCourseIdAndStatus(
+                courseId,
+                CourseEnrollment.EnrollmentStatus.ACTIVE
+        );
+
+        if (enrollmentCount > 0) {
+            throw new IllegalArgumentException("Cannot unpublish course with active enrollments");
+        }
+
+        // Change status back to DRAFT
+        course.setStatus(CourseStatus.DRAFT);
+        course.setUpdatedBy(teacherId);
+        courseRepository.save(course);
+
+        log.info("Course unpublished successfully: {}", courseId);
+        // Optional: Publish unpublish event
+        // eventPublisher.publishCourseUnpublished(courseId);
+    }
+
     @Transactional
     public void deleteCourse(String courseId, String teacherId) {
         log.info("Deleting course: {}", courseId);
@@ -206,7 +245,7 @@ public class CourseService {
         // Check if course has enrollments
         Long enrollmentCount = enrollmentRepository.countByCourseIdAndStatus(
                 courseId,
-                com.tcon.learning_management_service.course.entity.CourseEnrollment.EnrollmentStatus.ACTIVE
+                CourseEnrollment.EnrollmentStatus.ACTIVE
         );
 
         if (enrollmentCount > 0) {

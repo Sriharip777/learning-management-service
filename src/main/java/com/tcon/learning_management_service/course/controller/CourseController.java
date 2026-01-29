@@ -1,3 +1,4 @@
+//coourse controller
 package com.tcon.learning_management_service.course.controller;
 
 import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
@@ -63,13 +64,26 @@ public class CourseController {
         return ResponseEntity.ok(course);
     }
 
-    @PostMapping("/{courseId}/publish")
+    // ✅ CHANGE FROM @PostMapping TO @PatchMapping
+    @PatchMapping("/{courseId}/publish")
     public ResponseEntity<Map<String, String>> publishCourse(
             @PathVariable String courseId,
             @RequestHeader("X-User-Id") String teacherId) {
+        log.info("Publishing course: {} by teacher: {}", courseId, teacherId);
         courseService.publishCourse(courseId, teacherId);
         return ResponseEntity.ok(Map.of("message", "Course published successfully"));
     }
+
+    // ✅ ADD THIS NEW ENDPOINT
+    @PatchMapping("/{courseId}/unpublish")
+    public ResponseEntity<Map<String, String>> unpublishCourse(
+            @PathVariable String courseId,
+            @RequestHeader("X-User-Id") String teacherId) {
+        log.info("Unpublishing course: {} by teacher: {}", courseId, teacherId);
+        courseService.unpublishCourse(courseId, teacherId);
+        return ResponseEntity.ok(Map.of("message", "Course unpublished successfully"));
+    }
+
 
     @DeleteMapping("/{courseId}")
     public ResponseEntity<Map<String, String>> deleteCourse(
