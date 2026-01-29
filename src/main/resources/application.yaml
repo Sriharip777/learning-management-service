@@ -1,3 +1,5 @@
+# src/main/resources/application.yml
+
 spring:
   application:
     name: learning-management-service
@@ -49,6 +51,23 @@ eureka:
     lease-expiration-duration-in-seconds: 90
     instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
 
+# ✅ USER SERVICE CONFIGURATION (ADD THIS)
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://localhost:8081}
+
+# ✅ FEIGN CLIENT CONFIGURATION (ADD THIS)
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+        loggerLevel: FULL
+      user-service:
+        connectTimeout: 10000
+        readTimeout: 10000
+
 management:
   endpoints:
     web:
@@ -66,8 +85,10 @@ logging:
   level:
     root: INFO
     com.tcon.learning: DEBUG
+    com.tcon.learning_management_service.course.client: DEBUG  # ✅ ADD THIS for Feign logging
     org.springframework.data.mongodb: DEBUG
     org.springframework.kafka: OFF
+    org.springframework.cloud.openfeign: DEBUG  # ✅ ADD THIS for Feign debugging
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.course.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.tcon.learning_management_service.course.entity.CourseCategory;
 import com.tcon.learning_management_service.course.entity.CourseSchedule;
@@ -59,4 +58,21 @@ public class CourseDto {
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
+
+    //  TEACHER INFORMATION
+    private String teacherEmail;
+    private String teacherBio;
+    private List<String> teacherSubjects;
+    private List<String> teacherLanguages;
+    private Integer teacherYearsOfExperience;
+    private String teacherQualifications;
+    private Double teacherHourlyRate;
+    private Double teacherRating;
+    private Integer teacherTotalReviews;
+    private List<String> teacherExpertise;
+    private Integer teacherTotalStudents;
+    private String teacherProfilePicture;
+    private String teacherTimezone;
+    private Boolean teacherIsAvailable;
+    private String teacherVerificationStatus;
 }

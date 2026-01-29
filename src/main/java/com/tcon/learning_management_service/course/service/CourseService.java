@@ -1,15 +1,14 @@
-//course service
 package com.tcon.learning_management_service.course.service;
 
-import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
-import com.tcon.learning_management_service.course.dto.CourseDto;
-import com.tcon.learning_management_service.course.dto.CourseUpdateRequest;
+import com.tcon.learning_management_service.course.client.UserServiceClient;
+import com.tcon.learning_management_service.course.dto.*;
 import com.tcon.learning_management_service.course.entity.Course;
 import com.tcon.learning_management_service.course.entity.CourseStatus;
 import com.tcon.learning_management_service.course.entity.CourseEnrollment;
 import com.tcon.learning_management_service.course.repository.CourseEnrollmentRepository;
 import com.tcon.learning_management_service.course.repository.CourseRepository;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +27,7 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CourseEnrollmentRepository enrollmentRepository;
     private final CourseEventPublisher eventPublisher;
+    private final UserServiceClient userServiceClient; // ✅ ADD THIS
 
     @Transactional
     public CourseDto createCourse(String teacherId, CourseCreateRequest request) {
@@ -193,7 +193,6 @@ public class CourseService {
         eventPublisher.publishCoursePublished(course);
     }
 
-    // ✅ ADD THIS NEW METHOD
     @Transactional
     public void unpublishCourse(String courseId, String teacherId) {
         log.info("Unpublishing course: {}", courseId);
@@ -227,8 +226,6 @@ public class CourseService {
         courseRepository.save(course);
 
         log.info("Course unpublished successfully: {}", courseId);
-        // Optional: Publish unpublish event
-        // eventPublisher.publishCourseUnpublished(courseId);
     }
 
     @Transactional
@@ -259,8 +256,9 @@ public class CourseService {
         eventPublisher.publishCourseDeleted(courseId);
     }
 
+    // ✅ UPDATED: toDto method with teacher information enrichment
     private CourseDto toDto(Course course) {
-        return CourseDto.builder()
+        CourseDto dto = CourseDto.builder()
                 .id(course.getId())
                 .teacherId(course.getTeacherId())
                 .title(course.getTitle())
@@ -291,5 +289,72 @@ public class CourseService {
                 .createdAt(course.getCreatedAt())
                 .updatedAt(course.getUpdatedAt())
                 .build();
+
+        // ✅ ENRICH WITH TEACHER INFORMATION
+        enrichWithTeacherInfo(dto, course.getTeacherId());
+
+        return dto;
+    }
+
+    // ✅ NEW METHOD: Fetch and populate teacher information
+    private void enrichWithTeacherInfo(CourseDto courseDto, String teacherId) {
+        try {
+            log.debug("Fetching teacher information for teacherId: {}", teacherId);
+
+            // Fetch teacher details
+            TeacherResponseDto teacher = userServiceClient.getTeacherById(teacherId);
+
+            if (teacher != null) {
+                courseDto.setTeacherBio(teacher.getBio());
+                courseDto.setTeacherSubjects(teacher.getSubjects());
+                courseDto.setTeacherLanguages(teacher.getLanguages());
+                courseDto.setTeacherYearsOfExperience(teacher.getYearsOfExperience());
+                courseDto.setTeacherQualifications(teacher.getQualifications());
+                courseDto.setTeacherHourlyRate(teacher.getHourlyRate());
+                courseDto.setTeacherRating(teacher.getAverageRating());
+                courseDto.setTeacherTotalReviews(teacher.getTotalReviews());
+                courseDto.setTeacherExpertise(teacher.getSubjects()); // Use subjects as expertise
+                courseDto.setTeacherTimezone(teacher.getTimezone());
+                courseDto.setTeacherIsAvailable(teacher.getIsAvailable());
+                courseDto.setTeacherVerificationStatus(teacher.getVerificationStatus());
+
+                // Fetch user details for name and email
+                if (teacher.getUserId() != null) {
+                    UserResponseDto user = userServiceClient.getUserById(teacher.getUserId());
+
+                    if (user != null) {
+                        courseDto.setTeacherName(user.getName());
+                        courseDto.setTeacherEmail(user.getEmail());
+                        courseDto.setTeacherProfilePicture(user.getProfilePicture());
+                    }
+                }
+
+                // Calculate total students taught by teacher
+                Integer totalStudents = calculateTeacherTotalStudents(teacherId);
+                courseDto.setTeacherTotalStudents(totalStudents);
+
+                log.debug("Successfully enriched teacher information for teacherId: {}", teacherId);
+            }
+        } catch (FeignException.NotFound e) {
+            log.warn("Teacher not found for teacherId: {}", teacherId);
+            courseDto.setTeacherName("Expert Instructor");
+        } catch (Exception e) {
+            log.error("Error fetching teacher information for teacherId: {}", teacherId, e);
+            courseDto.setTeacherName("Expert Instructor");
+        }
+    }
+
+    // ✅ NEW METHOD: Calculate total students taught by teacher
+    private Integer calculateTeacherTotalStudents(String teacherId) {
+        try {
+            List<Course> teacherCourses = courseRepository.findByTeacherId(teacherId);
+            return teacherCourses.stream()
+                    .filter(course -> course.getCurrentEnrollments() != null)
+                    .mapToInt(Course::getCurrentEnrollments)
+                    .sum();
+        } catch (Exception e) {
+            log.error("Error calculating total students for teacherId: {}", teacherId, e);
+            return 0;
+        }
     }
 }
