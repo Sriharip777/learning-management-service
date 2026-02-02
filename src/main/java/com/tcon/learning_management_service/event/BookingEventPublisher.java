@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.event;
 
-
 import com.tcon.learning_management_service.booking.entity.Booking;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +51,46 @@ public class BookingEventPublisher {
             log.info("Published booking confirmed event: {}", booking.getId());
         } catch (Exception e) {
             log.error("Failed to publish booking confirmed event", e);
+        }
+    }
+
+    // ✅ ADD THIS METHOD
+    public void publishBookingApproved(Booking booking) {
+        try {
+            BookingEvent event = BookingEvent.builder()
+                    .eventType("BOOKING_APPROVED")
+                    .bookingId(booking.getId())
+                    .sessionId(booking.getSessionId())
+                    .studentId(booking.getStudentId())
+                    .teacherId(booking.getTeacherId())
+                    .sessionStartTime(booking.getSessionStartTime())
+                    .timestamp(LocalDateTime.now())
+                    .build();
+
+            kafkaTemplate.send(TOPIC, booking.getId(), event);
+            log.info("Published booking approved event: {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to publish booking approved event", e);
+        }
+    }
+
+    // ✅ ADD THIS METHOD
+    public void publishBookingRejected(Booking booking) {
+        try {
+            BookingEvent event = BookingEvent.builder()
+                    .eventType("BOOKING_REJECTED")
+                    .bookingId(booking.getId())
+                    .sessionId(booking.getSessionId())
+                    .studentId(booking.getStudentId())
+                    .teacherId(booking.getTeacherId())
+                    .cancellationReason(booking.getCancellationReason())
+                    .timestamp(LocalDateTime.now())
+                    .build();
+
+            kafkaTemplate.send(TOPIC, booking.getId(), event);
+            log.info("Published booking rejected event: {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to publish booking rejected event", e);
         }
     }
 

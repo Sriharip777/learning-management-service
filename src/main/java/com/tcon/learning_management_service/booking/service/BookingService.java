@@ -214,4 +214,77 @@ public class BookingService {
                 .updatedAt(booking.getUpdatedAt())
                 .build();
     }
+
+
+    // ==================== ADD TO BookingService.java ====================
+
+    @Transactional
+    public BookingDto approveBooking(String bookingId, String teacherId, String teacherMessage) {
+        log.info("Teacher {} approving booking {}", teacherId, bookingId);
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
+
+        // Validate teacher owns this booking
+        if (!booking.getTeacherId().equals(teacherId)) {
+            throw new IllegalArgumentException("Unauthorized: Teacher does not own this booking");
+        }
+
+        // Validate status
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new IllegalArgumentException("Only pending bookings can be approved");
+        }
+
+        // Update booking status to PENDING_PAYMENT (waiting for student payment)
+        booking.setStatus(BookingStatus.PENDING_PAYMENT);
+        booking.setNotes(teacherMessage); // Store teacher's message
+        booking.setConfirmedAt(LocalDateTime.now());
+
+        Booking updated = bookingRepository.save(booking);
+        log.info("Booking approved, pending payment: {}", bookingId);
+
+        // Publish event to generate invoice
+        eventPublisher.publishBookingApproved(updated);
+
+        return toDto(updated);
+    }
+
+    @Transactional
+    public BookingDto rejectBooking(String bookingId, String teacherId, String rejectionReason) {
+        log.info("Teacher {} rejecting booking {}", teacherId, bookingId);
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
+
+        // Validate teacher owns this booking
+        if (!booking.getTeacherId().equals(teacherId)) {
+            throw new IllegalArgumentException("Unauthorized: Teacher does not own this booking");
+        }
+
+        // Validate status
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new IllegalArgumentException("Only pending bookings can be rejected");
+        }
+
+        // Update booking
+        booking.setStatus(BookingStatus.REJECTED);
+        booking.setCancellationReason(rejectionReason);
+        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancelledBy(teacherId);
+
+        Booking updated = bookingRepository.save(booking);
+        log.info("Booking rejected: {}", bookingId);
+
+        // Publish event
+        eventPublisher.publishBookingRejected(updated);
+
+        return toDto(updated);
+    }
+
+    public List<BookingDto> getTeacherPendingRequests(String teacherId) {
+        return bookingRepository.findByTeacherIdAndStatus(teacherId, BookingStatus.PENDING)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
 }

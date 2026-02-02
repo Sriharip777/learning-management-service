@@ -98,4 +98,34 @@ public class BookingController {
         var availability = availabilityService.getTeacherAvailability(teacherId, start, end);
         return ResponseEntity.ok(availability);
     }
+
+    // ==================== ADD TO BookingController.java ====================
+
+    @PostMapping("/{bookingId}/approve")
+    public ResponseEntity<BookingDto> approveBooking(
+            @PathVariable String bookingId,
+            @RequestHeader("X-User-Id") String teacherId,
+            @RequestBody Map<String, String> requestBody) {
+
+        String teacherMessage = requestBody.get("message");
+        BookingDto booking = bookingService.approveBooking(bookingId, teacherId, teacherMessage);
+        return ResponseEntity.ok(booking);
+    }
+
+    @PostMapping("/{bookingId}/reject")
+    public ResponseEntity<BookingDto> rejectBooking(
+            @PathVariable String bookingId,
+            @RequestHeader("X-User-Id") String teacherId,
+            @RequestBody Map<String, String> requestBody) {
+
+        String rejectionReason = requestBody.get("reason");
+        BookingDto booking = bookingService.rejectBooking(bookingId, teacherId, rejectionReason);
+        return ResponseEntity.ok(booking);
+    }
+
+    @GetMapping("/teacher/{teacherId}/pending")
+    public ResponseEntity<List<BookingDto>> getTeacherPendingRequests(@PathVariable String teacherId) {
+        List<BookingDto> requests = bookingService.getTeacherPendingRequests(teacherId);
+        return ResponseEntity.ok(requests);
+    }
 }
