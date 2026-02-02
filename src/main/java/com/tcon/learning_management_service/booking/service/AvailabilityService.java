@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -35,19 +36,16 @@ public class AvailabilityService {
         List<AvailabilityDto> availabilityList = new ArrayList<>();
 
         try {
-            // Get teacher's configured availability
             Optional<TeacherAvailability> teacherAvailabilityOpt =
                     availabilityRepository.findByTeacherId(teacherId);
 
             if (teacherAvailabilityOpt.isEmpty()) {
                 log.warn("Teacher {} has not configured weekly availability", teacherId);
-                // Still show booked sessions
                 return getBookedSessionsOnly(teacherId, start, end);
             }
 
             TeacherAvailability teacherAvailability = teacherAvailabilityOpt.get();
 
-            // Generate slots for each day in range
             LocalDate currentDate = start.toLocalDate();
             LocalDate endDate = end.toLocalDate();
 
@@ -58,8 +56,12 @@ public class AvailabilityService {
                         .getOrDefault(dayOfWeek, new ArrayList<>());
 
                 for (TimeSlot slot : daySlots) {
-                    LocalDateTime slotStart = LocalDateTime.of(currentDate, slot.getStartTime());
-                    LocalDateTime slotEnd = LocalDateTime.of(currentDate, slot.getEndTime());
+                    // ⭐ Parse string to LocalTime
+                    LocalTime slotStartTime = LocalTime.parse(slot.getStartTime());
+                    LocalTime slotEndTime = LocalTime.parse(slot.getEndTime());
+
+                    LocalDateTime slotStart = LocalDateTime.of(currentDate, slotStartTime);
+                    LocalDateTime slotEnd = LocalDateTime.of(currentDate, slotEndTime);
 
                     if (!slotStart.isBefore(start) && !slotEnd.isAfter(end)) {
                         boolean isBooked = isSlotBooked(teacherId, slotStart, slotEnd);
