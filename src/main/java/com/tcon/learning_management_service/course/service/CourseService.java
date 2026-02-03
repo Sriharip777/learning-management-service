@@ -152,6 +152,44 @@ public class CourseService {
         return toDto(updated);
     }
 
+    /**
+     * Check if two users can communicate based on course enrollments
+     * Returns true if:
+     * - user1 is student enrolled in user2 (teacher)'s course, OR
+     * - user2 is student enrolled in user1 (teacher)'s course
+     */
+    public boolean canUsersCommunicate(String user1, String user2) {
+        log.debug("Checking communication permission between {} and {}", user1, user2);
+
+        // Check if user1 is student enrolled in any course taught by user2
+        List<CourseEnrollment> user1Enrollments = enrollmentRepository.findByStudentId(user1);
+        for (CourseEnrollment enrollment : user1Enrollments) {
+            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
+                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
+                if (course != null && course.getTeacherId().equals(user2)) {
+                    log.debug("User {} is enrolled in course {} taught by {}", user1, course.getId(), user2);
+                    return true;
+                }
+            }
+        }
+
+        // Check reverse: if user2 is student enrolled in any course taught by user1
+        List<CourseEnrollment> user2Enrollments = enrollmentRepository.findByStudentId(user2);
+        for (CourseEnrollment enrollment : user2Enrollments) {
+            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
+                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
+                if (course != null && course.getTeacherId().equals(user1)) {
+                    log.debug("User {} is enrolled in course {} taught by {}", user2, course.getId(), user1);
+                    return true;
+                }
+            }
+        }
+
+        log.debug("No enrollment relationship found between {} and {}", user1, user2);
+        return false;
+    }
+
+
     public CourseDto getCourse(String courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));

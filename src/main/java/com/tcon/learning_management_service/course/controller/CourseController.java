@@ -116,6 +116,15 @@ public class CourseController {
         return ResponseEntity.ok(enrollments);
     }
 
+    @GetMapping("/can-communicate")
+    public ResponseEntity<Boolean> canUsersCommunicate(
+            @RequestParam String user1,
+            @RequestParam String user2) {
+        log.info("Checking if {} can communicate with {}", user1, user2);
+        boolean canCommunicate = courseService.canUsersCommunicate(user1, user2);
+        return ResponseEntity.ok(canCommunicate);
+    }
+
     @DeleteMapping("/enrollments/{enrollmentId}")
     public ResponseEntity<Map<String, String>> cancelEnrollment(
             @PathVariable String enrollmentId,
