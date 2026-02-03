@@ -1,13 +1,19 @@
+// src/main/java/com/tcon/learning_management_service/booking/dto/BookingRequest.java
+
 package com.tcon.learning_management_service.booking.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -15,20 +21,35 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class BookingRequest {
 
-    @NotBlank(message = "Session ID is required")
+    // ==================== OPTION 1: Session-based booking ====================
     private String sessionId;
+    private String courseId;
 
+    // ==================== OPTION 2: Direct teacher booking ====================
+    private String teacherId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime sessionStartTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime sessionEndTime;
+
+    // ==================== STUDENT INFORMATION (REQUIRED) ====================
     @NotBlank(message = "Student name is required")
     private String studentName;
 
     @NotBlank(message = "Student email is required")
+    @Email(message = "Invalid email format")
     private String studentEmail;
 
-    @NotNull(message = "Amount is required")
+    // ==================== BOOKING DETAILS ====================
+    @Positive(message = "Amount must be positive")
     private BigDecimal amount;
 
     @Builder.Default
-    private String currency = "USD";
+    private String currency = "INR";
 
+    private String subject;
     private String notes;
+    private String classType;
 }
