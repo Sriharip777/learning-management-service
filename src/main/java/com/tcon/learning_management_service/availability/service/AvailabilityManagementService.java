@@ -1,8 +1,12 @@
 package com.tcon.learning_management_service.availability.service;
 
+import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
+import com.tcon.learning_management_service.availability.dto.DateSpecificAvailabilityDto;
 import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
+import com.tcon.learning_management_service.availability.entity.DateSpecificAvailability;
 import com.tcon.learning_management_service.availability.entity.TeacherAvailability;
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
+import com.tcon.learning_management_service.availability.repository.DateSpecificAvailabilityRepository;
 import com.tcon.learning_management_service.availability.repository.TeacherAvailabilityRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,12 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -23,6 +26,9 @@ import java.util.Map;
 public class AvailabilityManagementService {
 
     private final TeacherAvailabilityRepository availabilityRepository;
+    private final DateSpecificAvailabilityRepository dateSpecificRepository;
+
+    // ==================== WEEKLY AVAILABILITY (EXISTING) ====================
 
     @Transactional
     public TeacherAvailabilityDto setTeacherAvailability(
@@ -42,7 +48,7 @@ public class AvailabilityManagementService {
                         .dateOverrides(new ArrayList<>())
                         .build());
 
-        // ⭐ Set isAvailable to true for all slots if not set
+        // Set isAvailable to true for all slots if not set
         if (weeklyAvailability != null) {
             weeklyAvailability.forEach((day, slots) -> {
                 if (slots != null) {
@@ -90,7 +96,6 @@ public class AvailabilityManagementService {
             }
         }
 
-        // ⭐ Set isAvailable if not set
         if (timeSlot.getIsAvailable() == null) {
             timeSlot.setIsAvailable(true);
         }
@@ -148,7 +153,76 @@ public class AvailabilityManagementService {
         log.info("Availability deleted successfully");
     }
 
-    // ⭐ FIXED: Parse strings to LocalTime for comparison
+    // ==================== DATE-SPECIFIC AVAILABILITY (NEW) ====================
+
+    /**
+     * ✅ Save batch date-specific availability
+     */
+    @Transactional
+    public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
+        log.info("💾 Saving batch date-specific availability for teacher: {}", request.getTeacherId());
+
+        for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
+            LocalDate date = LocalDate.parse(dateDto.getDate());
+
+            // Set isAvailable for all slots
+            dateDto.getTimeSlots().forEach(slot -> {
+                if (slot.getIsAvailable() == null) {
+                    slot.setIsAvailable(true);
+                }
+            });
+
+            DateSpecificAvailability availability = DateSpecificAvailability.builder()
+                    .teacherId(request.getTeacherId())
+                    .date(date)
+                    .timeSlots(dateDto.getTimeSlots())
+                    .timezone(request.getTimezone())
+                    .bufferTimeMinutes(request.getBufferTimeMinutes())
+                    .build();
+
+            // Delete existing if present (upsert behavior)
+            dateSpecificRepository.findByTeacherIdAndDate(request.getTeacherId(), date)
+                    .ifPresent(existing -> dateSpecificRepository.delete(existing));
+
+            dateSpecificRepository.save(availability);
+            log.info("✅ Saved date-specific availability for {}", dateDto.getDate());
+        }
+    }
+
+    /**
+     * ✅ Get all date-specific availability for a teacher
+     */
+    public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId) {
+        log.info("📅 Fetching date-specific availability for teacher: {}", teacherId);
+
+        LocalDate today = LocalDate.now();
+        LocalDate futureDate = today.plusMonths(6);
+
+        List<DateSpecificAvailability> availabilities = dateSpecificRepository
+                .findByTeacherIdAndDateBetween(teacherId, today, futureDate);
+
+        Map<String, List<TimeSlot>> result = availabilities.stream()
+                .collect(Collectors.toMap(
+                        avail -> avail.getDate().toString(),
+                        DateSpecificAvailability::getTimeSlots
+                ));
+
+        log.info("✅ Found {} date-specific entries", result.size());
+        return result;
+    }
+
+    /**
+     * ✅ Delete date-specific availability
+     */
+    @Transactional
+    public void deleteDateSpecificAvailability(String teacherId, LocalDate date) {
+        log.info("🗑️ Deleting date-specific availability for teacher {} on {}", teacherId, date);
+        dateSpecificRepository.deleteByTeacherIdAndDate(teacherId, date);
+        log.info("✅ Deleted successfully");
+    }
+
+    // ==================== HELPER METHODS ====================
+
     private boolean timeSlotsOverlap(TimeSlot slot1, TimeSlot slot2) {
         try {
             LocalTime start1 = LocalTime.parse(slot1.getStartTime());
