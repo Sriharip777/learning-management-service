@@ -1,6 +1,8 @@
 package com.tcon.learning_management_service.availability.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
 import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
 import com.tcon.learning_management_service.availability.service.AvailabilityManagementService;
@@ -10,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +25,8 @@ public class AvailabilityController {
 
     private final AvailabilityManagementService availabilityManagementService;
     private final ObjectMapper objectMapper;
+
+    // ==================== WEEKLY AVAILABILITY (EXISTING) ====================
 
     /**
      * Set teacher's weekly availability
@@ -67,7 +72,7 @@ public class AvailabilityController {
     }
 
     /**
-     * Get teacher's configured availability
+     * Get teacher's configured weekly availability
      * GET /api/availability/teacher/{teacherId}
      */
     @GetMapping("/teacher/{teacherId}")
@@ -99,7 +104,7 @@ public class AvailabilityController {
     }
 
     /**
-     * Delete teacher's availability
+     * Delete teacher's weekly availability
      * DELETE /api/availability/teacher/{teacherId}
      */
     @DeleteMapping("/teacher/{teacherId}")
@@ -167,6 +172,84 @@ public class AvailabilityController {
                 teacherId, dayOfWeek, timeSlot);
 
         return ResponseEntity.ok(availability);
+    }
+
+    // ==================== DATE-SPECIFIC AVAILABILITY (NEW) ====================
+
+    /**
+     * ✅ Save date-specific availability (batch)
+     * POST /api/availability/date-specific/batch
+     */
+    @PostMapping("/date-specific/batch")
+    public ResponseEntity<Map<String, Object>> saveDateSpecificAvailabilityBatch(
+            @RequestBody BatchDateAvailabilityRequest request) {
+
+        log.info("📅 Saving batch date-specific availability for teacher {}", request.getTeacherId());
+        log.info("Date slots count: {}", request.getDateSlots().size());
+
+        try {
+            availabilityManagementService.saveDateSpecificAvailabilityBatch(request);
+
+            log.info("✅ Saved {} date-specific availability entries", request.getDateSlots().size());
+            return ResponseEntity.ok(Map.of(
+                    "message", "Availability saved successfully",
+                    "count", request.getDateSlots().size()
+            ));
+
+        } catch (Exception e) {
+            log.error("❌ Failed to save date-specific availability", e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "message", "Failed to save availability: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * ✅ Get all date-specific availability for a teacher
+     * GET /api/availability/date-specific/{teacherId}
+     */
+    @GetMapping("/date-specific/{teacherId}")
+    public ResponseEntity<Map<String, List<TimeSlot>>> getDateSpecificAvailability(
+            @PathVariable String teacherId) {
+
+        log.info("📅 Fetching date-specific availability for teacher {}", teacherId);
+
+        try {
+            Map<String, List<TimeSlot>> availability =
+                    availabilityManagementService.getDateSpecificAvailability(teacherId);
+
+            log.info("✅ Found {} date-specific entries", availability.size());
+            return ResponseEntity.ok(availability);
+
+        } catch (Exception e) {
+            log.error("❌ Failed to fetch date-specific availability", e);
+            return ResponseEntity.status(500).body(new HashMap<>());
+        }
+    }
+
+    /**
+     * ✅ Delete specific date availability
+     * DELETE /api/availability/date-specific/{teacherId}/{date}
+     */
+    @DeleteMapping("/date-specific/{teacherId}/{date}")
+    public ResponseEntity<Map<String, String>> deleteDateSpecificAvailability(
+            @PathVariable String teacherId,
+            @PathVariable String date) {
+
+        log.info("🗑️ Deleting date-specific availability for teacher {} on {}", teacherId, date);
+
+        try {
+            LocalDate localDate = LocalDate.parse(date);
+            availabilityManagementService.deleteDateSpecificAvailability(teacherId, localDate);
+
+            return ResponseEntity.ok(Map.of("message", "Availability deleted successfully"));
+
+        } catch (Exception e) {
+            log.error("❌ Failed to delete date-specific availability", e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "message", "Failed to delete availability: " + e.getMessage()
+            ));
+        }
     }
 
     // ==================== HELPER METHODS ====================
