@@ -1,6 +1,9 @@
+// src/main/java/com/tcon/learning_management_service/booking/controller/BookingController.java
+
 package com.tcon.learning_management_service.booking.controller;
 
 import com.tcon.learning_management_service.booking.dto.AvailabilityDto;
+import com.tcon.learning_management_service.booking.dto.BatchBookingRequest;
 import com.tcon.learning_management_service.booking.dto.BookingCancellationRequest;
 import com.tcon.learning_management_service.booking.dto.BookingDto;
 import com.tcon.learning_management_service.booking.dto.BookingRequest;
@@ -13,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -71,6 +73,45 @@ public class BookingController {
             );
         }
     }
+
+    // ==================== CREATE BATCH BOOKING (NEW) ====================
+
+    @PostMapping("/batch")
+    public ResponseEntity<?> createBatchBooking(
+            @RequestHeader("X-User-Id") String userId,
+            @Valid @RequestBody BatchBookingRequest request) {
+
+        log.info("📥 POST /api/bookings/batch - Creating multi-session booking");
+        log.info("🆔 User ID: {}", userId);
+        log.info("👥 Student: {} ({})", request.getStudentName(), request.getStudentEmail());
+        log.info("👨‍🏫 Teacher: {}", request.getTeacherId());
+        log.info("📦 Sessions: {}", request.getSessions().size());
+        log.info("💰 Total: {} {}", request.getCurrency(), request.getTotalAmount());
+
+        try {
+            // ✅ Creates ONE booking with multiple sessions
+            BookingDto booking = bookingService.createBatchBooking(userId, request);
+
+            log.info("✅ Multi-session booking created: ID={}, Sessions={}",
+                    booking.getId(),
+                    booking.getSessions() != null ? booking.getSessions().size() : 0);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(booking);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(
+                    Map.of("error", e.getMessage())
+            );
+
+        } catch (Exception e) {
+            log.error("❌ Unexpected error creating batch booking", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    Map.of("error", "Failed to create batch booking: " + e.getMessage())
+            );
+        }
+    }
+
     // ==================== CONFIRM BOOKING (AFTER PAYMENT) ====================
 
     @PostMapping("/{bookingId}/confirm")
