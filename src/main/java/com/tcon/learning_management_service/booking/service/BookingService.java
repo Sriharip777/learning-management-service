@@ -2,6 +2,7 @@
 
 package com.tcon.learning_management_service.booking.service;
 
+import com.tcon.learning_management_service.booking.dto.BatchBookingRequest;
 import com.tcon.learning_management_service.booking.dto.BookingDto;
 import com.tcon.learning_management_service.booking.dto.BookingRequest;
 import com.tcon.learning_management_service.booking.entity.Booking;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -107,8 +109,8 @@ public class BookingService {
                     .sessionId(request.getSessionId())
                     .courseId(session.getCourseId())
                     .studentId(studentId)
-                    .studentName(request.getStudentName())   // ⭐ From request
-                    .studentEmail(request.getStudentEmail()) // ⭐ From request
+                    .studentName(request.getStudentName())
+                    .studentEmail(request.getStudentEmail())
                     .teacherId(session.getTeacherId())
                     .status(BookingStatus.PENDING)
                     .sessionStartTime(session.getScheduledStartTime())
@@ -173,8 +175,8 @@ public class BookingService {
         // Create booking request
         Booking booking = Booking.builder()
                 .studentId(studentId)
-                .studentName(request.getStudentName())   // ⭐ From request
-                .studentEmail(request.getStudentEmail()) // ⭐ From request
+                .studentName(request.getStudentName())
+                .studentEmail(request.getStudentEmail())
                 .teacherId(request.getTeacherId())
                 .sessionId(request.getSessionId()) // May be null
                 .courseId(request.getCourseId())   // May be null
@@ -199,6 +201,83 @@ public class BookingService {
         eventPublisher.publishBookingCreated(saved);
 
         return toDto(saved);
+    }
+
+    // ==================== CREATE BATCH BOOKING (NEW) ====================
+
+    /**
+     * Create ONE booking with multiple sessions
+     */
+    @Transactional
+    public BookingDto createBatchBooking(String studentId, BatchBookingRequest request) {
+        log.info("📦 Creating multi-session booking for student: {}", studentId);
+        log.info("  - Student: {} ({})", request.getStudentName(), request.getStudentEmail());
+        log.info("  - Teacher: {}", request.getTeacherId());
+        log.info("  - Sessions: {}", request.getSessions().size());
+        log.info("  - Total amount: {} {}", request.getCurrency(), request.getTotalAmount());
+
+        // ⭐ Validate
+        if (request.getStudentName() == null || request.getStudentName().isBlank()) {
+            throw new IllegalArgumentException("Student name is required");
+        }
+        if (request.getStudentEmail() == null || request.getStudentEmail().isBlank()) {
+            throw new IllegalArgumentException("Student email is required");
+        }
+        if (request.getSessions() == null || request.getSessions().isEmpty()) {
+            throw new IllegalArgumentException("At least one session is required");
+        }
+
+        // ⭐ Convert session slots to SessionTime entities
+        List<Booking.SessionTime> sessionTimes = new ArrayList<>();
+        for (BatchBookingRequest.SessionSlot slot : request.getSessions()) {
+            if (slot.getSessionStartTime() == null || slot.getSessionEndTime() == null) {
+                throw new IllegalArgumentException("Session start and end times are required");
+            }
+            if (slot.getSessionStartTime().isBefore(LocalDateTime.now())) {
+                throw new IllegalArgumentException("Cannot book sessions in the past");
+            }
+            if (slot.getSessionEndTime().isBefore(slot.getSessionStartTime())) {
+                throw new IllegalArgumentException("Session end time must be after start time");
+            }
+
+            sessionTimes.add(Booking.SessionTime.builder()
+                    .startTime(slot.getSessionStartTime())
+                    .endTime(slot.getSessionEndTime())
+                    .amount(slot.getAmount())
+                    .build());
+        }
+
+        // ⭐ Create ONE booking with multiple sessions
+        Booking booking = Booking.builder()
+                .studentId(studentId)
+                .studentName(request.getStudentName())
+                .studentEmail(request.getStudentEmail())
+                .teacherId(request.getTeacherId())
+                .courseId(request.getCourseId())
+                .sessions(sessionTimes) // ✅ All sessions in one booking
+                .amount(request.getTotalAmount()) // ✅ Total amount for all sessions
+                .currency(request.getCurrency())
+                .status(BookingStatus.PENDING)
+                .bookedAt(LocalDateTime.now())
+                .cancellationPolicy(getDefaultCancellationPolicy())
+                .reminderSent(false)
+                .notes(request.getNotes())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        // ⭐ Save ONE booking
+        Booking savedBooking = bookingRepository.save(booking);
+        log.info("✅ Multi-session booking created: ID={}, Sessions={}, Total={}{}",
+                savedBooking.getId(),
+                sessionTimes.size(),
+                request.getCurrency(),
+                request.getTotalAmount());
+
+        // ⭐ Publish event
+        eventPublisher.publishBookingCreated(savedBooking);
+
+        return toDto(savedBooking);
     }
 
     // ==================== CONFIRM BOOKING (AFTER PAYMENT) ====================
@@ -226,6 +305,9 @@ public class BookingService {
 
         // Publish event
         eventPublisher.publishBookingConfirmed(updated);
+
+        // TODO: Create class sessions after payment
+        // createSessionsFromBooking(bookingId);
 
         return toDto(updated);
     }
@@ -366,11 +448,15 @@ public class BookingService {
 
         // Log each pending request for debugging
         pending.forEach(booking -> {
-            log.info("  📌 Pending: ID={}, Student={}, Email={}, Time={}",
+            int sessionCount = (booking.getSessions() != null && !booking.getSessions().isEmpty())
+                    ? booking.getSessions().size()
+                    : 1;
+            log.info("  📌 Pending: ID={}, Student={}, Email={}, Sessions={}, Amount={}",
                     booking.getId(),
                     booking.getStudentName(),
                     booking.getStudentEmail(),
-                    booking.getSessionStartTime());
+                    sessionCount,
+                    booking.getAmount());
         });
 
         return pending.stream()
@@ -444,17 +530,30 @@ public class BookingService {
     }
 
     private BookingDto toDto(Booking booking) {
+        // ✅ Convert sessions if present
+        List<BookingDto.SessionTimeDto> sessionDtos = null;
+        if (booking.getSessions() != null && !booking.getSessions().isEmpty()) {
+            sessionDtos = booking.getSessions().stream()
+                    .map(s -> BookingDto.SessionTimeDto.builder()
+                            .startTime(s.getStartTime())
+                            .endTime(s.getEndTime())
+                            .amount(s.getAmount())
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
         return BookingDto.builder()
                 .id(booking.getId())
                 .sessionId(booking.getSessionId())
                 .courseId(booking.getCourseId())
                 .studentId(booking.getStudentId())
-                .studentName(booking.getStudentName())   // ⭐ Include
-                .studentEmail(booking.getStudentEmail()) // ⭐ Include
+                .studentName(booking.getStudentName())
+                .studentEmail(booking.getStudentEmail())
                 .teacherId(booking.getTeacherId())
                 .status(booking.getStatus())
                 .sessionStartTime(booking.getSessionStartTime())
                 .sessionEndTime(booking.getSessionEndTime())
+                .sessions(sessionDtos) // ✅ Include sessions
                 .amount(booking.getAmount())
                 .currency(booking.getCurrency())
                 .paymentId(booking.getPaymentId())

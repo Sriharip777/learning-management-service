@@ -1,8 +1,8 @@
+// src/main/java/com/tcon/learning_management_service/booking/dto/BookingDto.java
+
 package com.tcon.learning_management_service.booking.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonFormat;
-
 import com.tcon.learning_management_service.booking.entity.BookingStatus;
 import com.tcon.learning_management_service.booking.entity.CancellationPolicy;
 import lombok.AllArgsConstructor;
@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -27,11 +28,15 @@ public class BookingDto {
     private String teacherId;
     private BookingStatus status;
 
+    // ✅ Single session fields (backward compatibility)
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime sessionStartTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime sessionEndTime;
+
+    // ✅ Multiple sessions (for batch bookings)
+    private List<SessionTimeDto> sessions;
 
     private BigDecimal amount;
     private String currency;
@@ -67,4 +72,19 @@ public class BookingDto {
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
+
+    // ✅ Nested DTO class for multiple sessions (INSIDE BookingDto)
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SessionTimeDto {
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        private LocalDateTime startTime;
+
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        private LocalDateTime endTime;
+
+        private BigDecimal amount;
+    }
 }
