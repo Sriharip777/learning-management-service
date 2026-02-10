@@ -52,4 +52,6 @@ public class BookingRequest {
     private String subject;
     private String notes;
     private String classType;
+
+    private String parentId;  // Optional parent observer
 }

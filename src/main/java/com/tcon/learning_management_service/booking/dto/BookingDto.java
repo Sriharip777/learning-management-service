@@ -25,6 +25,11 @@ public class BookingDto {
     private String studentName;
     private String studentEmail;
     private String teacherId;
+
+    private String parentId;
+    private String subject;
+    private Integer durationMinutes;
+
     private BookingStatus status;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")

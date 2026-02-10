@@ -1,11 +1,14 @@
 package com.tcon.learning_management_service.event;
 
-
 import com.tcon.learning_management_service.booking.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -14,62 +17,59 @@ public class PaymentEventListener {
 
     private final BookingService bookingService;
 
-    @KafkaListener(topics = "payment-events", groupId = "learning-management-service")
-    public void handlePaymentEvent(PaymentEvent event) {
-        log.info("Received payment event: {} for booking: {}", event.getEventType(), event.getBookingId());
+    // ✅ Listen to the correct topic: payment-completed
+    @KafkaListener(
+            topics = "payment-completed",
+            groupId = "learning-management-service"
+    )
+    public void handlePaymentCompleted(Map<String, Object> event) {
+        log.info("📨 ============ PAYMENT COMPLETED EVENT RECEIVED ============");
+        log.info("📦 Raw Event: {}", event);
 
-        switch (event.getEventType()) {
-            case "PAYMENT_SUCCESS":
-                handlePaymentSuccess(event);
-                break;
-            case "PAYMENT_FAILED":
-                handlePaymentFailed(event);
-                break;
-            case "REFUND_PROCESSED":
-                handleRefundProcessed(event);
-                break;
-            default:
-                log.warn("Unknown payment event type: {}", event.getEventType());
-        }
-    }
-
-    private void handlePaymentSuccess(PaymentEvent event) {
         try {
-            log.info("Processing payment success for booking: {}", event.getBookingId());
-            bookingService.confirmBooking(
-                    event.getBookingId(),
-                    event.getPaymentId(),
-                    event.getTransactionId()
-            );
-            log.info("Booking confirmed after payment success: {}", event.getBookingId());
+            String bookingId = (String) event.get("bookingId");
+            String paymentId = (String) event.get("paymentId");
+
+            log.info("🎫 Booking ID: {}", bookingId);
+            log.info("💰 Payment ID: {}", paymentId);
+
+            if (bookingId == null || bookingId.isEmpty()) {
+                log.error("❌ Booking ID is missing in event");
+                return;
+            }
+
+            // Confirm the booking
+            bookingService.confirmBooking(bookingId, paymentId, paymentId);
+
+            log.info("✅ Booking confirmed successfully: {}", bookingId);
+
         } catch (Exception e) {
-            log.error("Failed to confirm booking after payment success", e);
+            log.error("❌ Failed to process payment completed event", e);
+            log.error("❌ Event data: {}", event);
         }
+
+        log.info("📨 ============ EVENT PROCESSING COMPLETE ============");
     }
 
-    private void handlePaymentFailed(PaymentEvent event) {
-        log.info("Processing payment failure for booking: {}", event.getBookingId());
-        // Add logic: Cancel booking
-        // Add logic: Notify student
+    // Keep your existing listeners for other payment events
+    @KafkaListener(topics = "payment-failed", groupId = "learning-management-service")
+    public void handlePaymentFailed(Map<String, Object> event) {
+        log.info("📨 Received payment failed event: {}", event);
+
+        String bookingId = (String) event.get("bookingId");
+        String reason = (String) event.get("failureReason");
+
+        log.info("❌ Payment failed for booking: {}, Reason: {}", bookingId, reason);
+        // TODO: Update booking status to PAYMENT_FAILED
     }
 
-    private void handleRefundProcessed(PaymentEvent event) {
-        log.info("Processing refund for booking: {}", event.getBookingId());
-        // Add logic: Update booking status
-        // Add logic: Send refund confirmation
-    }
+    @KafkaListener(topics = "refund-completed", groupId = "learning-management-service")
+    public void handleRefundProcessed(Map<String, Object> event) {
+        log.info("📨 Received refund completed event: {}", event);
 
-    @lombok.Data
-    @lombok.Builder
-    @lombok.NoArgsConstructor
-    @lombok.AllArgsConstructor
-    public static class PaymentEvent {
-        private String eventType;
-        private String bookingId;
-        private String paymentId;
-        private String transactionId;
-        private java.math.BigDecimal amount;
-        private String currency;
-        private java.time.LocalDateTime timestamp;
+        String bookingId = (String) event.get("bookingId");
+
+        log.info("💸 Refund processed for booking: {}", bookingId);
+        // TODO: Update booking status
     }
 }

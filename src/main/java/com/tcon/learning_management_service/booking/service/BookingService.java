@@ -138,18 +138,19 @@ public class BookingService {
     }
 
     /**
-     * Create direct teacher booking request (no existing session)
+     * Create direct teacher booking request (creates session first)
+     * Flow: Session → Booking → Event
      */
     private BookingDto createDirectTeacherBooking(String studentId, BookingRequest request) {
-        log.info("🎯 Creating direct booking request for teacher: {}", request.getTeacherId());
+        log.info("🎯 Creating direct one-on-one booking for teacher: {}", request.getTeacherId());
         log.info("📅 Time: {} to {}", request.getSessionStartTime(), request.getSessionEndTime());
 
-        // Validate required fields
+        // ==================== VALIDATION ====================
+
         if (request.getSessionStartTime() == null || request.getSessionEndTime() == null) {
             throw new IllegalArgumentException("Session start and end times are required");
         }
 
-        // Validate time
         if (request.getSessionStartTime().isBefore(LocalDateTime.now())) {
             throw new IllegalArgumentException("Cannot book sessions in the past");
         }
@@ -158,29 +159,73 @@ public class BookingService {
             throw new IllegalArgumentException("Session end time must be after start time");
         }
 
-        // Check for overlapping bookings (just log warning, allow teacher to decide)
-        List<Booking> overlapping = bookingRepository.findByTeacherIdAndSessionStartTimeBetween(
+        // ==================== CALCULATE DURATION ====================
+
+        Integer duration = (int) java.time.Duration.between(
+                request.getSessionStartTime(),
+                request.getSessionEndTime()
+        ).toMinutes();
+
+        log.info("📏 Calculated duration: {} minutes", duration);
+
+        // ==================== CHECK FOR CONFLICTS ====================
+
+        List<ClassSession> overlapping = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
                 request.getTeacherId(),
                 request.getSessionStartTime().minusMinutes(1),
                 request.getSessionEndTime().plusMinutes(1)
         );
 
         if (!overlapping.isEmpty()) {
-            log.warn("⚠️ Found {} overlapping booking(s), but creating as PENDING for teacher approval",
+            log.warn("⚠️ Found {} overlapping session(s) for teacher, but creating as PENDING for approval",
                     overlapping.size());
         }
 
-        // Create booking request
-        Booking booking = Booking.builder()
-                .studentId(studentId)
-                .studentName(request.getStudentName())   // ⭐ From request
-                .studentEmail(request.getStudentEmail()) // ⭐ From request
+        // ==================== STEP 1: CREATE SESSION FIRST ====================
+
+        log.info("🆕 Creating ClassSession for one-on-one booking");
+
+        ClassSession session = ClassSession.builder()
+                .sessionType(com.tcon.learning_management_service.session.entity.SessionType.ONE_ON_ONE)
+                .courseId(null) // One-on-one has no course
                 .teacherId(request.getTeacherId())
-                .sessionId(request.getSessionId()) // May be null
-                .courseId(request.getCourseId())   // May be null
+                .teacherName("Teacher") // TODO: Fetch from User Service if needed
+                .studentId(studentId) // ✅ NEW: Direct student reference
+                .bookingId(null) // ✅ Will be set after booking is created
+                .title(request.getSubject() != null ? request.getSubject() : "One-on-One Class")
+                .description("Direct booking with " + request.getStudentName())
+                .status(com.tcon.learning_management_service.session.entity.ClassStatus.SCHEDULED)
+                .scheduledStartTime(request.getSessionStartTime())
+                .scheduledEndTime(request.getSessionEndTime())
+                .durationMinutes(duration)
+                .maxParticipants(1) // One-on-one = single student
+                .participants(new java.util.ArrayList<>())
+                .attendedCount(0)
+                .materialUrls(new java.util.ArrayList<>())
+                .reminderSent(false)
+                .createdBy(request.getTeacherId())
+                .build();
+
+        ClassSession savedSession = sessionRepository.save(session);
+        log.info("✅ ClassSession created: {} (Type: ONE_ON_ONE)", savedSession.getId());
+
+        // ==================== STEP 2: CREATE BOOKING LINKED TO SESSION ====================
+
+        log.info("🔨 Creating Booking linked to session: {}", savedSession.getId());
+
+        Booking booking = Booking.builder()
+                .sessionId(savedSession.getId()) // ✅ ALWAYS has sessionId now
+                .courseId(null) // One-on-one has no course
+                .studentId(studentId)
+                .studentName(request.getStudentName())
+                .studentEmail(request.getStudentEmail())
+                .teacherId(request.getTeacherId())
+                .parentId(request.getParentId())
+                .subject(request.getSubject())
+                .durationMinutes(duration)
                 .sessionStartTime(request.getSessionStartTime())
                 .sessionEndTime(request.getSessionEndTime())
-                .status(BookingStatus.PENDING) // Teacher needs to approve
+                .status(BookingStatus.PENDING) // Awaiting teacher approval
                 .amount(request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO)
                 .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
                 .bookedAt(LocalDateTime.now())
@@ -192,10 +237,23 @@ public class BookingService {
                 .build();
 
         Booking saved = bookingRepository.save(booking);
-        log.info("✅ Direct booking request created: ID={}, Student={}, Teacher={}",
-                saved.getId(), saved.getStudentName(), saved.getTeacherId());
 
-        // Publish event
+        // ==================== STEP 3: UPDATE SESSION WITH BOOKING ID ====================
+
+        savedSession.setBookingId(saved.getId());
+        sessionRepository.save(savedSession);
+
+        log.info("💾 Booking created successfully:");
+        log.info("   📋 Booking ID: {}", saved.getId());
+        log.info("   🎓 Session ID: {}", saved.getSessionId());
+        log.info("   👤 Student: {} ({})", saved.getStudentName(), saved.getStudentEmail());
+        log.info("   👨‍🏫 Teacher: {}", saved.getTeacherId());
+        log.info("   📚 Subject: {}", saved.getSubject());
+        log.info("   ⏱️ Duration: {} minutes", saved.getDurationMinutes());
+        log.info("   📅 Time: {} to {}", saved.getSessionStartTime(), saved.getSessionEndTime());
+
+        // ==================== STEP 4: PUBLISH EVENT ====================
+
         eventPublisher.publishBookingCreated(saved);
 
         return toDto(saved);
@@ -210,6 +268,10 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
+        // ✅ ADD THIS LOG
+        log.info("📊 Booking durationMinutes BEFORE confirm: {}", booking.getDurationMinutes());
+        log.info("📅 Session times: {} to {}", booking.getSessionStartTime(), booking.getSessionEndTime());
+
         if (booking.getStatus() != BookingStatus.PENDING &&
                 booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             throw new IllegalArgumentException("Only pending bookings can be confirmed");
@@ -222,6 +284,9 @@ public class BookingService {
         booking.setUpdatedAt(LocalDateTime.now());
 
         Booking updated = bookingRepository.save(booking);
+
+        // ✅ ADD THIS LOG
+        log.info("📊 Booking durationMinutes AFTER save: {}", updated.getDurationMinutes());
         log.info("✅ Booking confirmed: {}", bookingId);
 
         // Publish event
@@ -229,6 +294,7 @@ public class BookingService {
 
         return toDto(updated);
     }
+
 
     // ==================== TEACHER APPROVE/REJECT ====================
 
@@ -452,6 +518,9 @@ public class BookingService {
                 .studentName(booking.getStudentName())   // ⭐ Include
                 .studentEmail(booking.getStudentEmail()) // ⭐ Include
                 .teacherId(booking.getTeacherId())
+                .parentId(booking.getParentId())                    // ✅ ADD
+                .subject(booking.getSubject())                      // ✅ ADD
+                .durationMinutes(booking.getDurationMinutes())      // ✅ ADD
                 .status(booking.getStatus())
                 .sessionStartTime(booking.getSessionStartTime())
                 .sessionEndTime(booking.getSessionEndTime())

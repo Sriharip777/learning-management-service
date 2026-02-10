@@ -5,6 +5,7 @@ public enum SessionType {
     REGULAR,
     DEMO,
     MAKEUP,
-    EXTRA
+    EXTRA,
+    ONE_ON_ONE
 }
 

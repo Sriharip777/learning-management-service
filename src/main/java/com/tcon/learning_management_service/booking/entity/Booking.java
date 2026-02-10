@@ -41,6 +41,12 @@ public class Booking {
     @Indexed
     private String teacherId;
 
+
+    private String parentId;           // Optional parent observer
+    private String subject;            // What the class is about
+    private Integer durationMinutes;   // How long the class is
+
+
     @Builder.Default
     private BookingStatus status = BookingStatus.PENDING;
 

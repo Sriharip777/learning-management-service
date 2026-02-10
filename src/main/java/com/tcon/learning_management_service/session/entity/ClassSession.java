@@ -35,6 +35,12 @@ public class ClassSession {
     private String title;
     private String description;
 
+    @Indexed
+    private String bookingId;  // ✅ ADD: Link back to booking for one-on-one
+
+    @Indexed
+    private String studentId;  // ✅ ADD: Direct student reference for one-on-one
+
     @Builder.Default
     private SessionType sessionType = SessionType.REGULAR;
 
