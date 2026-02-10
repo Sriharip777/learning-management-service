@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.booking.entity;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,13 +13,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "bookings")
-@CompoundIndex(name = "session_student_idx", def = "{'sessionId': 1, 'studentId': 1}", unique = true)
+@CompoundIndex(name = "session_student_idx", def = "{'sessionId': 1, 'studentId': 1}", unique = false)
 public class Booking {
 
     @Id
@@ -50,8 +50,12 @@ public class Booking {
     @Builder.Default
     private BookingStatus status = BookingStatus.PENDING;
 
+    // ✅ Single session fields (backward compatibility)
     private LocalDateTime sessionStartTime;
     private LocalDateTime sessionEndTime;
+
+    // ✅ Multiple sessions (for batch bookings)
+    private List<SessionTime> sessions;
 
     private BigDecimal amount;
     private String currency;
@@ -83,4 +87,15 @@ public class Booking {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
+    // ✅ ADD THIS: Nested class for multiple sessions
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SessionTime {
+        private LocalDateTime startTime;
+        private LocalDateTime endTime;
+        private BigDecimal amount;
+    }
 }
