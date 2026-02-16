@@ -1,6 +1,4 @@
 package com.tcon.learning_management_service.event;
-
-
 import com.tcon.learning_management_service.demo.entity.DemoClass;
 import com.tcon.learning_management_service.session.entity.ClassSession;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +7,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -35,6 +35,30 @@ public class SessionEventPublisher {
             log.error("Failed to publish session scheduled event", e);
         }
     }
+
+    // ✅ ADD THIS NEW METHOD
+    public void publishSessionCreated(ClassSession session) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventType", "SESSION_CREATED");
+            event.put("sessionId", session.getId());
+            event.put("courseId", session.getCourseId());
+            event.put("sessionType", session.getSessionType().toString());
+            event.put("teacherId", session.getTeacherId());
+            event.put("scheduledStartTime", session.getScheduledStartTime().toString());
+            event.put("scheduledEndTime", session.getScheduledEndTime().toString());
+            event.put("durationMinutes", session.getDurationMinutes());
+            event.put("maxParticipants", session.getMaxParticipants());
+            event.put("title", session.getTitle());
+            event.put("timestamp", LocalDateTime.now().toString());
+
+            kafkaTemplate.send(TOPIC, session.getId(), event);
+            log.info("📤 Published SESSION_CREATED event: {}", session.getId());
+        } catch (Exception e) {
+            log.error("❌ Failed to publish session created event", e);
+        }
+    }
+
 
     public void publishSessionStarted(ClassSession session) {
         try {

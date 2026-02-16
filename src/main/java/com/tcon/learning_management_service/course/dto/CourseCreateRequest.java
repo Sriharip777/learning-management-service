@@ -1,7 +1,7 @@
 package com.tcon.learning_management_service.course.dto;
-
 import com.tcon.learning_management_service.course.entity.CourseCategory;
 import com.tcon.learning_management_service.course.entity.CourseSchedule;
+import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -76,4 +76,6 @@ public class CourseCreateRequest {
     private Boolean isDemoAvailable = false;
 
     private Integer demoSessionDuration;
+    private List<SessionScheduleRequest> sessions;
+
 }

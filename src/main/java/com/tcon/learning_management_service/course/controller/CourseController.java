@@ -1,6 +1,4 @@
-//coourse controller
 package com.tcon.learning_management_service.course.controller;
-
 import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
 import com.tcon.learning_management_service.course.dto.CourseDto;
 import com.tcon.learning_management_service.course.dto.CourseSearchDto;
@@ -146,4 +144,21 @@ public class CourseController {
         enrollmentService.cancelEnrollment(enrollmentId, studentId);
         return ResponseEntity.ok(Map.of("message", "Enrollment cancelled successfully"));
     }
+
+    // ✅ ADD THESE TO YOUR CourseController
+
+    @GetMapping("/student/{studentId}/teachers")
+    public ResponseEntity<List<String>> getTeachersForStudent(@PathVariable String studentId) {
+        log.info("Getting teachers for student: {}", studentId);
+        List<String> teacherIds = courseService.getTeachersForStudent(studentId);
+        return ResponseEntity.ok(teacherIds);
+    }
+
+    @GetMapping("/teacher/{teacherId}/students")
+    public ResponseEntity<List<String>> getStudentsForTeacher(@PathVariable String teacherId) {
+        log.info("Getting students for teacher: {}", teacherId);
+        List<String> studentIds = courseService.getStudentsForTeacher(teacherId);
+        return ResponseEntity.ok(studentIds);
+    }
+
 }

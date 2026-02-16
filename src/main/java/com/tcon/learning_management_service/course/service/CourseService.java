@@ -1,3 +1,4 @@
+
 package com.tcon.learning_management_service.course.service;
 
 import com.tcon.learning_management_service.course.client.UserServiceClient;
@@ -8,6 +9,8 @@ import com.tcon.learning_management_service.course.entity.CourseEnrollment;
 import com.tcon.learning_management_service.course.repository.CourseEnrollmentRepository;
 import com.tcon.learning_management_service.course.repository.CourseRepository;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
+import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
+import com.tcon.learning_management_service.session.service.ClassSessionService;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +31,7 @@ public class CourseService {
     private final CourseEnrollmentRepository enrollmentRepository;
     private final CourseEventPublisher eventPublisher;
     private final UserServiceClient userServiceClient; // ✅ ADD THIS
+    private final ClassSessionService classSessionService;
 
     @Transactional
     public CourseDto createCourse(String teacherId, CourseCreateRequest request) {
@@ -77,11 +81,42 @@ public class CourseService {
         Course saved = courseRepository.save(course);
         log.info("Course created successfully with ID: {}", saved.getId());
 
+        // ✅ NEW: Auto-create sessions if sessions data provided
+        if (request.getSessions() != null && !request.getSessions().isEmpty()) {
+            log.info("Creating {} sessions for course {}", request.getSessions().size(), saved.getId());
+
+            int sessionNumber = 1;
+            for (SessionScheduleRequest sessionRequest : request.getSessions()) {
+                try {
+                    // Set courseId
+                    sessionRequest.setCourseId(saved.getId());
+
+                    // Add session number to title if not already present
+                    if (!sessionRequest.getTitle().contains("Session")) {
+                        sessionRequest.setTitle("Session " + sessionNumber + " - " + sessionRequest.getTitle());
+                    }
+
+                    // Create session
+                    classSessionService.scheduleSession(teacherId, sessionRequest);
+
+                    log.info("Session {} created for course {}", sessionNumber, saved.getId());
+                    sessionNumber++;
+                } catch (Exception e) {
+                    log.error("Failed to create session for course {}: {}", saved.getId(), e.getMessage(), e);
+                    // Don't fail course creation if session creation fails
+                }
+            }
+        } else if (request.getTotalSessions() != null && request.getTotalSessions() > 0) {
+            // ✅ NEW: If sessions not provided but totalSessions specified, log warning
+            log.warn("Course created with {} total sessions but no session details provided. Sessions must be created manually.", request.getTotalSessions());
+        }
+
         // Publish event
         eventPublisher.publishCourseCreated(saved);
 
         return toDto(saved);
     }
+
 
     @Transactional
     public CourseDto updateCourse(String courseId, String teacherId, CourseUpdateRequest request) {
@@ -395,4 +430,53 @@ public class CourseService {
             return 0;
         }
     }
+
+    public List<String> getTeachersForStudent(String studentId) {
+        log.info("Finding teachers for student: {}", studentId);
+
+        List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
+                studentId,
+                CourseEnrollment.EnrollmentStatus.ACTIVE
+        );
+
+        List<String> courseIds = enrollments.stream()
+                .map(CourseEnrollment::getCourseId)
+                .distinct()
+                .toList();
+
+        List<String> teacherIds = courseRepository.findAllById(courseIds).stream()
+                .map(Course::getTeacherId)
+                .distinct()
+                .toList();
+
+        log.info("Found {} teachers for student {}", teacherIds.size(), studentId);
+        return teacherIds;
+    }
+
+    public List<String> getStudentsForTeacher(String teacherId) {
+        log.info("Finding students for teacher: {}", teacherId);
+
+        List<Course> courses = courseRepository.findByTeacherId(teacherId);
+
+        List<String> courseIds = courses.stream()
+                .map(Course::getId)
+                .toList();
+
+        List<String> studentIds = new ArrayList<>();
+        for (String courseId : courseIds) {
+            List<CourseEnrollment> enrollments = enrollmentRepository.findByCourseIdAndStatus(
+                    courseId,
+                    CourseEnrollment.EnrollmentStatus.ACTIVE
+            );
+            studentIds.addAll(enrollments.stream()
+                    .map(CourseEnrollment::getStudentId)
+                    .toList());
+        }
+
+        List<String> uniqueStudentIds = studentIds.stream().distinct().toList();
+
+        log.info("Found {} students for teacher {}", uniqueStudentIds.size(), teacherId);
+        return uniqueStudentIds;
+    }
+
 }
