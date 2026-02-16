@@ -478,5 +478,4 @@ public class CourseService {
         log.info("Found {} students for teacher {}", uniqueStudentIds.size(), teacherId);
         return uniqueStudentIds;
     }
-
 }
