@@ -10,13 +10,16 @@ spring:
       database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
 
-  # Kafka is DISABLED - excluded from autoconfigure
+  # ✅ Disable Kafka completely
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
+  # ✅ Kafka config (won't be used, but prevents errors)
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      auto-startup: false  # CRITICAL: Prevents listeners from starting
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
       auto-offset-reset: earliest
@@ -61,7 +64,7 @@ feign:
       default:
         connectTimeout: ${FEIGN_DEFAULT_CONNECT_TIMEOUT:5000}
         readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT:5000}
-        loggerLevel: ${FEIGN_LOG_LEVEL:FULL}
+        loggerLevel: ${FEIGN_LOG_LEVEL:BASIC}
       user-service:
         connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
         readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
@@ -82,9 +85,10 @@ management:
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
-    com.tcon.learning_management: ${LOG_LEVEL_APP:INFO}
+    com.tcon.learning_management_service: ${LOG_LEVEL_APP:INFO}
     org.springframework.data.mongodb: ${LOG_LEVEL_MONGO:WARN}
     org.springframework.cloud.loadbalancer: WARN
+    org.springframework.kafka: ERROR  # ✅ Suppress Kafka errors
     io.github.resilience4j: INFO
     io.netty: ERROR
   pattern:
