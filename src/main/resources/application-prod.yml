@@ -1,31 +1,91 @@
+# src/main/resources/application.yml
+
 spring:
+  application:
+    name: learning-management-service
+
   data:
     mongodb:
       uri: ${MONGODB_URI}
       database: ${MONGODB_DATABASE:learning_management}
+      auto-index-creation: true
+
+  # Kafka is DISABLED - excluded from autoconfigure
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
-    producer:
-      acks: all
-      retries: 5
-      compression-type: snappy
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        max.poll.records: 500
-        max.poll.interval.ms: 300000
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
 
 server:
-  port: ${SERVER_PORT:8083}
-
-logging:
-  level:
-    root: WARN
-    com.tcon.learning: INFO
-    org.springframework.data.mongodb: WARN
-    org.springframework.kafka: WARN
+  port: ${SERVER_PORT:8084}
+  servlet:
+    context-path: /
+  error:
+    include-message: always
+    include-binding-errors: always
 
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_SERVER}
+      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
+    register-with-eureka: ${EUREKA_REGISTER:true}
+    fetch-registry: ${EUREKA_FETCH:true}
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 30
+    lease-expiration-duration-in-seconds: 90
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://localhost:8081}
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: ${FEIGN_DEFAULT_CONNECT_TIMEOUT:5000}
+        readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT:5000}
+        loggerLevel: ${FEIGN_LOG_LEVEL:FULL}
+      user-service:
+        connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
+        readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.tcon.learning_management: ${LOG_LEVEL_APP:INFO}
+    org.springframework.data.mongodb: ${LOG_LEVEL_MONGO:WARN}
+    org.springframework.cloud.loadbalancer: WARN
+    io.github.resilience4j: INFO
+    io.netty: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
