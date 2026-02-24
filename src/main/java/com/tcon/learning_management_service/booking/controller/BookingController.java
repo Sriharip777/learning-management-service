@@ -220,6 +220,27 @@ public class BookingController {
         return ResponseEntity.ok(bookings);
     }
 
+    // ==================== GET BOOKINGS BY PARENT ====================
+
+    @GetMapping("/parent/{parentId}")
+    public ResponseEntity<List<BookingDto>> getParentBookings(
+            @PathVariable String parentId
+            // If you later secure this with auth:
+            // @AuthenticationPrincipal String currentUserId
+    ) {
+        log.info("📥 GET /api/bookings/parent/{}", parentId);
+
+        // If you have Spring Security here and want to restrict:
+        // if (!parentId.equals(currentUserId)) {
+        //     return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        // }
+
+        List<BookingDto> bookings = bookingService.getParentBookings(parentId);
+        log.info("✅ Found {} bookings for parent {}", bookings.size(), parentId);
+
+        return ResponseEntity.ok(bookings);
+    }
+
     // ==================== TEACHER APPROVE/REJECT ====================
 
     @PostMapping("/{bookingId}/approve")

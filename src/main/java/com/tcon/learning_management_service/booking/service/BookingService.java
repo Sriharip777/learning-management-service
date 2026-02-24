@@ -502,6 +502,19 @@ public class BookingService {
                 .collect(Collectors.toList());
     }
 
+    // src/main/java/com/tcon/learning_management_service/booking/service/BookingService.java
+
+    public List<BookingDto> getParentBookings(String parentId) {
+        log.info("📋 Getting bookings for parent: {}", parentId);
+
+        List<Booking> bookings = bookingRepository.findByParentId(parentId);
+        log.info("✅ Found {} bookings for parent {}", bookings.size(), parentId);
+
+        return bookings.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
     public List<BookingDto> getTeacherPendingRequests(String teacherId) {
         log.info("📋 Getting pending requests for teacher: {}", teacherId);
 

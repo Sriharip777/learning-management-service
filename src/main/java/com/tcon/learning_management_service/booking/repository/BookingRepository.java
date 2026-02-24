@@ -24,6 +24,9 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
 
     List<Booking> findBySessionId(String sessionId);
 
+    // ✅ NEW: all bookings for a parent (all their children)
+    List<Booking> findByParentId(String parentId);
+
     List<Booking> findBySessionIdAndStatus(String sessionId, BookingStatus status);
 
     List<Booking> findByCourseId(String courseId);
