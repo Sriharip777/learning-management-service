@@ -8,27 +8,18 @@ server:
 
 spring:
   application:
-    name: learning-management-service
+    name: LEARNING-MANAGEMENT-SERVICE
 
-  # ===========================
-  # MONGODB
-  # ===========================
   data:
     mongodb:
       uri: ${MONGODB_URI}
       database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
 
-  # ===========================
-  # KAFKA (disabled)
-  # ===========================
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
-# ===========================
-# EUREKA DISCOVERY
-# ===========================
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:true}
@@ -51,9 +42,6 @@ eureka:
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
 
-# ===========================
-# FEIGN CLIENT
-# ===========================
 feign:
   client:
     config:
@@ -65,9 +53,6 @@ feign:
         connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
         readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
 
-# ===========================
-# MANAGEMENT
-# ===========================
 management:
   endpoints:
     web:
@@ -77,9 +62,6 @@ management:
     health:
       show-details: always
 
-# ===========================
-# LOGGING
-# ===========================
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
