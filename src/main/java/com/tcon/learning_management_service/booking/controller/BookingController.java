@@ -241,6 +241,15 @@ public class BookingController {
         return ResponseEntity.ok(bookings);
     }
 
+    @GetMapping("/parent/{parentId}/upcoming")
+    public ResponseEntity<List<BookingDto>> getParentUpcomingBookings(@PathVariable String parentId) {
+        log.info("📥 GET /api/bookings/parent/{}/upcoming", parentId);
+        List<BookingDto> bookings = bookingService.getParentUpcomingBookings(parentId);
+        log.info("✅ Found {} upcoming bookings for parent {}", bookings.size(), parentId);
+        return ResponseEntity.ok(bookings);
+    }
+
+
     // ==================== TEACHER APPROVE/REJECT ====================
 
     @PostMapping("/{bookingId}/approve")

@@ -6,6 +6,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,11 +40,14 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
     List<Booking> findByTeacherIdAndSessionStartTimeBetween(
             String teacherId, LocalDateTime start, LocalDateTime end);
 
+    List<Booking> findByParentIdAndSessionStartTimeBetween(
+            String parentId, LocalDateTime start, LocalDateTime end);
+
     Long countBySessionIdAndStatus(String sessionId, BookingStatus status);
 
     Long countByStudentIdAndStatus(String studentId, BookingStatus status);
 
     boolean existsBySessionIdAndStudentId(String sessionId, String studentId);
 
-    boolean existsBySessionIdAndStudentIdAndStatus(String sessionId, String studentId, BookingStatus status);
-}
+    boolean existsBySessionIdAndStudentIdAndStatus(String sessionId, String studentId, BookingStatus status);}
+

@@ -515,6 +515,23 @@ public class BookingService {
                 .collect(Collectors.toList());
     }
 
+    public List<BookingDto> getParentUpcomingBookings(String parentId) {
+        log.info("📋 Getting upcoming bookings for parent: {}", parentId);
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime end = now.plusMonths(1); // or any range you want
+
+        List<Booking> bookings =
+                bookingRepository.findByParentIdAndSessionStartTimeBetween(parentId, now, end)
+                        .stream()
+                        .filter(b -> b.getStatus() == BookingStatus.CONFIRMED
+                                || b.getStatus() == BookingStatus.PENDING
+                                || b.getStatus() == BookingStatus.PENDING_PAYMENT)
+                        .toList();
+
+        return bookings.stream().map(this::toDto).toList();
+    }
+
     public List<BookingDto> getTeacherPendingRequests(String teacherId) {
         log.info("📋 Getting pending requests for teacher: {}", teacherId);
 
