@@ -1,94 +1,91 @@
-# src/main/resources/application.yml
-
-spring:
-  application:
-    name: learning-management-service
-
-  data:
-    mongodb:
-      uri: ${MONGODB_URI}
-      database: ${MONGODB_DATABASE:learning_management}
-      auto-index-creation: true
-
-  # ✅ Disable Kafka completely
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-
-  # ✅ Kafka config (won't be used, but prevents errors)
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    listener:
-      auto-startup: false  # CRITICAL: Prevents listeners from starting
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      acks: all
-      retries: 3
-
 server:
-  port: ${SERVER_PORT:8084}
+  port: ${PORT:8084}
   servlet:
     context-path: /
   error:
     include-message: always
     include-binding-errors: always
 
+spring:
+  application:
+    name: learning-management-service
+
+  # ===========================
+  # MONGODB
+  # ===========================
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_DATABASE:learning_management}
+      auto-index-creation: true
+
+  # ===========================
+  # KAFKA (disabled)
+  # ===========================
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+# ===========================
+# EUREKA DISCOVERY
+# ===========================
 eureka:
   client:
+    enabled: ${EUREKA_ENABLED:true}
+    register-with-eureka: true
+    fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
-    register-with-eureka: ${EUREKA_REGISTER:true}
-    fetch-registry: ${EUREKA_FETCH:true}
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+    registry-fetch-interval-seconds: 15
+
   instance:
-    prefer-ip-address: true
-    lease-renewal-interval-in-seconds: 30
-    lease-expiration-duration-in-seconds: 90
-    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: false
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME:localhost}:${server.port}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
+    home-page-url: https://${eureka.instance.hostname}/
+    status-page-url: https://${eureka.instance.hostname}/actuator/info
+    health-check-url: https://${eureka.instance.hostname}/actuator/health
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
 
-user:
-  service:
-    url: ${USER_SERVICE_URL:http://localhost:8081}
-
+# ===========================
+# FEIGN CLIENT
+# ===========================
 feign:
   client:
     config:
       default:
         connectTimeout: ${FEIGN_DEFAULT_CONNECT_TIMEOUT:5000}
-        readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT:5000}
+        readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT:10000}
         loggerLevel: ${FEIGN_LOG_LEVEL:BASIC}
       user-service:
         connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
         readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
 
+# ===========================
+# MANAGEMENT
+# ===========================
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics
   endpoint:
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
 
+# ===========================
+# LOGGING
+# ===========================
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
     com.tcon.learning_management_service: ${LOG_LEVEL_APP:INFO}
     org.springframework.data.mongodb: ${LOG_LEVEL_MONGO:WARN}
     org.springframework.cloud.loadbalancer: WARN
-    org.springframework.kafka: ERROR  # ✅ Suppress Kafka errors
     io.github.resilience4j: INFO
     io.netty: ERROR
   pattern:
