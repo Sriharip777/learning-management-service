@@ -20,54 +20,54 @@ public class AssignmentController {
     private final SubmissionService submissionService;
 
 
-    // Teacher creates assignment
+    /**
+     * Teacher creates assignment
+     * Assignment must contain questionIds (no empty assignment allowed)
+     */
     @PostMapping
     public Assignment createAssignment(
-            @RequestBody AssignmentCreateRequest request)
-    {
+            @RequestBody AssignmentCreateRequest request) {
         return assignmentService.createAssignment(request);
     }
 
 
-    // Teacher assigns students
+    /**
+     * Teacher assigns students to assignment
+     */
     @PostMapping("/{assignmentId}/assign")
     public Assignment assignStudents(
             @PathVariable String assignmentId,
-            @RequestBody AssignStudentsRequest request)
-    {
-        return assignmentService.assignStudents(
-                assignmentId,
-                request);
+            @RequestBody AssignStudentsRequest request) {
+        return assignmentService.assignStudents(assignmentId, request);
     }
 
 
-    // Student view assignments
+    /**
+     * Student views assigned assignments
+     */
     @GetMapping("/student/{studentId}")
     public List<Assignment> getStudentAssignments(
-            @PathVariable String studentId)
-    {
-        return assignmentService
-                .getAssignmentsForStudent(studentId);
+            @PathVariable String studentId) {
+        return assignmentService.getAssignmentsForStudent(studentId);
     }
 
 
-    // Teacher view assignments
+    /**
+     * Teacher views created assignments
+     */
     @GetMapping("/teacher/{teacherId}")
     public List<Assignment> getTeacherAssignments(
-            @PathVariable String teacherId)
-    {
-        return assignmentService
-                .getAssignmentsForTeacher(teacherId);
+            @PathVariable String teacherId) {
+        return assignmentService.getAssignmentsForTeacher(teacherId);
     }
 
 
-    // Teacher view results
+    /**
+     * Teacher views results of assignment
+     */
     @GetMapping("/{assignmentId}/results")
     public List<Submission> getResults(
-            @PathVariable String assignmentId)
-    {
-        return submissionService
-                .getResults(assignmentId);
+            @PathVariable String assignmentId) {
+        return submissionService.getResults(assignmentId);
     }
-
 }

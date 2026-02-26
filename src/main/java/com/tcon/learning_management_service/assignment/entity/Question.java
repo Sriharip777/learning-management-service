@@ -4,6 +4,8 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.util.List;
+
 @Data
 @Document(collection = "questions")
 public class Question {
@@ -11,11 +13,11 @@ public class Question {
     @Id
     private String id;
 
-    private String assignmentId;
-
     private String questionText;
+
+    private List<String> options;      // ✅ REQUIRED
 
     private String correctAnswer;
 
-    private int marks;
+    private String teacherId;          // ✅ REQUIRED
 }

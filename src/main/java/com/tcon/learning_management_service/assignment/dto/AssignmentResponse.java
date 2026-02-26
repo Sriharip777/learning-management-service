@@ -1,5 +1,6 @@
 package com.tcon.learning_management_service.assignment.dto;
 
+import com.tcon.learning_management_service.assignment.entity.AssignmentStatus;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -15,10 +16,7 @@ public class AssignmentResponse {
 
     private String teacherId;
 
-    private String courseId;
-
     private LocalDate dueDate;
 
-    private String status;
-
+    private AssignmentStatus status;   // ✅ ENUM instead of String
 }

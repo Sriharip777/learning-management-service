@@ -5,6 +5,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -20,12 +21,11 @@ public class Assignment {
 
     private String teacherId;
 
-    private List<String> studentIds;
+    private List<String> studentIds = new ArrayList<>();
 
     private List<String> questionIds;
 
     private LocalDate dueDate;
 
-    private String status;
-
+    private AssignmentStatus status;   // ✅ ENUM instead of String
 }

@@ -15,23 +15,30 @@ public class QuestionController {
 
     private final QuestionService questionService;
 
-
-    // Teacher add question
+    /**
+     * Teacher creates question
+     */
     @PostMapping
-    public Question addQuestion(
-            @RequestBody QuestionCreateRequest request)
-    {
-        return questionService.addQuestion(request);
+    public Question createQuestion(
+            @RequestBody QuestionCreateRequest request) {
+        return questionService.createQuestion(request);
     }
 
-
-    // Get assignment questions
-    @GetMapping("/{assignmentId}")
-    public List<Question> getQuestions(
-            @PathVariable String assignmentId)
-    {
-        return questionService
-                .getQuestions(assignmentId);
+    /**
+     * Get single question
+     */
+    @GetMapping("/{questionId}")
+    public Question getQuestion(
+            @PathVariable String questionId) {
+        return questionService.getQuestion(questionId);
     }
 
+    /**
+     * Get all questions created by teacher
+     */
+    @GetMapping("/teacher/{teacherId}")
+    public List<Question> getQuestionsByTeacher(
+            @PathVariable String teacherId) {
+        return questionService.getQuestionsByTeacher(teacherId);
+    }
 }

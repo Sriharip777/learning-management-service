@@ -1,9 +1,7 @@
 package com.tcon.learning_management_service.assignment.service;
 
 import com.tcon.learning_management_service.assignment.dto.QuestionCreateRequest;
-import com.tcon.learning_management_service.assignment.entity.Assignment;
 import com.tcon.learning_management_service.assignment.entity.Question;
-import com.tcon.learning_management_service.assignment.repository.AssignmentRepository;
 import com.tcon.learning_management_service.assignment.repository.QuestionRepository;
 import com.tcon.learning_management_service.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -16,68 +14,26 @@ import java.util.List;
 public class QuestionService {
 
     private final QuestionRepository questionRepository;
-    private final AssignmentRepository assignmentRepository;
-
 
     /**
-     * Teacher adds question to assignment
-     * Auto wiring Assignment ↔ Question
+     * Teacher creates question (independent of assignment)
      */
-    public Question addQuestion(QuestionCreateRequest request)
-    {
-
-        Assignment assignment =
-                assignmentRepository.findById(
-                                request.getAssignmentId())
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Assignment not found: "
-                                                + request.getAssignmentId()));
+    public Question createQuestion(QuestionCreateRequest request) {
 
         Question question = new Question();
 
-        question.setAssignmentId(request.getAssignmentId());
         question.setQuestionText(request.getQuestionText());
+        question.setOptions(request.getOptions());
         question.setCorrectAnswer(request.getCorrectAnswer());
-        question.setMarks(request.getMarks());
+        question.setTeacherId(request.getTeacherId());
 
-        Question savedQuestion =
-                questionRepository.save(question);
-
-
-        // Auto wiring
-        assignment.getQuestionIds()
-                .add(savedQuestion.getId());
-
-        assignmentRepository.save(assignment);
-
-        return savedQuestion;
-
+        return questionRepository.save(question);
     }
-
-
-    /**
-     * Get questions by assignment
-     */
-    public List<Question> getQuestions(String assignmentId)
-    {
-
-        // Validate assignment
-        assignmentRepository.findById(assignmentId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Assignment not found: " + assignmentId));
-
-        return questionRepository
-                .findByAssignmentId(assignmentId);
-    }
-
 
     /**
      * Get single question
      */
-    public Question getQuestion(String questionId)
-    {
+    public Question getQuestion(String questionId) {
 
         return questionRepository.findById(questionId)
                 .orElseThrow(() ->
@@ -85,4 +41,10 @@ public class QuestionService {
                                 "Question not found: " + questionId));
     }
 
+    /**
+     * Get all questions created by teacher
+     */
+    public List<Question> getQuestionsByTeacher(String teacherId) {
+        return questionRepository.findByTeacherId(teacherId);
+    }
 }

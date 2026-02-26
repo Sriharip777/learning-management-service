@@ -3,13 +3,13 @@ package com.tcon.learning_management_service.assignment.service;
 import com.tcon.learning_management_service.assignment.dto.AssignmentCreateRequest;
 import com.tcon.learning_management_service.assignment.dto.AssignStudentsRequest;
 import com.tcon.learning_management_service.assignment.entity.Assignment;
+import com.tcon.learning_management_service.assignment.entity.AssignmentStatus; // ✅ IMPORT ENUM
 import com.tcon.learning_management_service.assignment.repository.AssignmentRepository;
 import com.tcon.learning_management_service.assignment.validation.AssignmentValidator;
 import com.tcon.learning_management_service.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,14 +19,13 @@ public class AssignmentService {
     private final AssignmentRepository assignmentRepository;
     private final AssignmentValidator assignmentValidator;
 
-
     /**
      * Teacher creates assignment
+     * Assignment must contain questionIds
      */
-    public Assignment createAssignment(
-            AssignmentCreateRequest request)
-    {
+    public Assignment createAssignment(AssignmentCreateRequest request) {
 
+        // 1️⃣ Validate request
         assignmentValidator.validateCreateRequest(request);
 
         Assignment assignment = new Assignment();
@@ -36,71 +35,60 @@ public class AssignmentService {
         assignment.setTeacherId(request.getTeacherId());
         assignment.setDueDate(request.getDueDate());
 
-        assignment.setQuestionIds(new ArrayList<>());
-        assignment.setStudentIds(new ArrayList<>());
+        // Must contain questions
+        assignment.setQuestionIds(request.getQuestionIds());
 
-        assignment.setStatus("CREATED");
+        // studentIds already initialized in entity (if you followed previous update)
+        assignment.setStatus(AssignmentStatus.CREATED);   // ✅ ENUM
 
         return assignmentRepository.save(assignment);
     }
 
-
     /**
-     * Assign students
+     * Assign students to assignment
      */
-    public Assignment assignStudents(
-            String assignmentId,
-            AssignStudentsRequest request)
-    {
+    public Assignment assignStudents(String assignmentId,
+                                     AssignStudentsRequest request) {
 
-        Assignment assignment =
-                assignmentRepository.findById(assignmentId)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Assignment not found: " + assignmentId));
+        Assignment assignment = assignmentRepository.findById(assignmentId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Assignment not found: " + assignmentId));
+
+        assignmentValidator.validateStudentAssignment(request);
 
         assignment.setStudentIds(request.getStudentIds());
-
-        assignment.setStatus("ACTIVE");
+        assignment.setStatus(AssignmentStatus.ACTIVE);   // ✅ ENUM
 
         return assignmentRepository.save(assignment);
     }
 
-
     /**
-     * Student assignments
+     * Get assignments for student
      */
-    public List<Assignment> getAssignmentsForStudent(
-            String studentId)
-    {
+    public List<Assignment> getAssignmentsForStudent(String studentId) {
 
         return assignmentRepository
                 .findByStudentIdsContaining(studentId);
     }
 
-
     /**
-     * Teacher assignments
+     * Get assignments for teacher
      */
-    public List<Assignment> getAssignmentsForTeacher(
-            String teacherId)
-    {
+    public List<Assignment> getAssignmentsForTeacher(String teacherId) {
 
         return assignmentRepository
                 .findByTeacherId(teacherId);
     }
 
-
     /**
-     * Get assignment
+     * Get single assignment
      */
-    public Assignment getAssignment(String assignmentId)
-    {
+    public Assignment getAssignment(String assignmentId) {
 
         return assignmentRepository.findById(assignmentId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Assignment not found: " + assignmentId));
     }
-
 }
