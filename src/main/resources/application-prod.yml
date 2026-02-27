@@ -26,15 +26,13 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+      defaultZone: ${EUREKA_URL}
     registry-fetch-interval-seconds: 15
 
   instance:
-    # In Cloud Run set:
-    # EUREKA_INSTANCE_HOSTNAME=educonlearningmanagmentservice-64307221061.asia-south1.run.app
-    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
-    prefer-ip-address: false
-    instance-id: ${EUREKA_INSTANCE_HOSTNAME:localhost}:${server.port}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME}
+    prefer-ip-address: ${EUREKA_INSTANCE_PREFER_IP_ADDRESS:false}
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME}:${PORT:8084}
     non-secure-port-enabled: false
     secure-port-enabled: true
     secure-port: 443
