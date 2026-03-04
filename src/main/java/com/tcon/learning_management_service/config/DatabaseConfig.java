@@ -19,13 +19,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Configuration
 @EnableMongoRepositories(
-        basePackages = {
-                "com.tcon.learning_management_service.course.repository",
-                "com.tcon.learning_management_service.session.repository",
-                "com.tcon.learning_management_service.booking.repository",
-                "com.tcon.learning_management_service.demo.repository",
-                "com.tcon.learning_management_service.availability.repository"
-        }
+        basePackages = "com.tcon.learning_management_service"
 )
 public class DatabaseConfig extends AbstractMongoClientConfiguration {
 
