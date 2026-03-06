@@ -3,7 +3,7 @@ package com.tcon.learning_management_service.assignment.dto;
 import com.tcon.learning_management_service.assignment.entity.AssignmentStatus;
 import lombok.Data;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 public class AssignmentResponse {
@@ -16,7 +16,7 @@ public class AssignmentResponse {
 
     private String teacherId;
 
-    private LocalDate dueDate;
+    private LocalDateTime dueDate;
 
-    private AssignmentStatus status;   // ✅ ENUM instead of String
+    private AssignmentStatus status;
 }

@@ -1,7 +1,7 @@
 package com.tcon.learning_management_service.assignment.dto;
 
 import lombok.Data;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -15,5 +15,5 @@ public class AssignmentCreateRequest {
 
     private List<String> questionIds;
 
-    private LocalDate dueDate;   // ✅ ADD THIS
+    private LocalDateTime dueDate;
 }

@@ -13,27 +13,27 @@ public class SubmissionController {
 
     private final SubmissionService submissionService;
 
-
-    // Student submit assignment
-    @PostMapping
+    /**
+     * Student submits assignment
+     */
+    @PostMapping("/submit")
     public Submission submitAssignment(
-            @RequestBody SubmissionRequest request)
-    {
-        return submissionService
-                .submitAssignment(request);
+            @RequestBody SubmissionRequest request) {
+
+        return submissionService.submitAssignment(request);
     }
 
-
-    // Student view own submission
-    @GetMapping("/{assignmentId}/{studentId}")
+    /**
+     * Student view own submission
+     */
+    @GetMapping("/student/{assignmentId}/{studentId}")
     public Submission getSubmission(
             @PathVariable String assignmentId,
-            @PathVariable String studentId)
-    {
-        return submissionService
-                .getSubmission(
-                        assignmentId,
-                        studentId);
-    }
+            @PathVariable String studentId) {
 
+        return submissionService.getSubmission(
+                assignmentId,
+                studentId
+        );
+    }
 }

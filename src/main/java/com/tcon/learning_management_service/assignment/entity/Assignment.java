@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,7 +25,8 @@ public class Assignment {
 
     private List<String> questionIds;
 
-    private LocalDate dueDate;
+    // Deadline with time
+    private LocalDateTime dueDate;
 
-    private AssignmentStatus status;   // ✅ ENUM instead of String
+    private AssignmentStatus status;
 }

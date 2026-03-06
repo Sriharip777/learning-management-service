@@ -7,11 +7,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class AssignmentMapper {
 
-    public AssignmentResponse map(Assignment assignment)
-    {
+    public AssignmentResponse map(Assignment assignment) {
 
-        AssignmentResponse response =
-                new AssignmentResponse();
+        AssignmentResponse response = new AssignmentResponse();
 
         response.setId(assignment.getId());
         response.setTitle(assignment.getTitle());
@@ -22,5 +20,4 @@ public class AssignmentMapper {
 
         return response;
     }
-
 }
