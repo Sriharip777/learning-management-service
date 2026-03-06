@@ -43,9 +43,12 @@ public class EvaluationService {
                     .filter(q ->
                             q.getId().equals(ans.getQuestionId()))
                     .findFirst()
-                    .orElseThrow(() ->
-                            new RuntimeException(
-                                    "Question not found in assignment"));
+                    .orElse(null);   // ✅ Added safety from second code
+
+            // 🔥 Prevent crash if question not found
+            if (question == null) {
+                return;  // skip invalid question safely
+            }
 
             Answer answer = new Answer();
 

@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/submissions")
+@RequestMapping("/api/submissions")
 @RequiredArgsConstructor
 public class SubmissionController {
 
