@@ -63,6 +63,8 @@ public class Course {
     @Builder.Default
     private List<String> learningOutcomes = new ArrayList<>();
 
+    private List<CourseSession> sessions;
+
     private String thumbnailUrl;
 
     @Builder.Default

@@ -42,6 +42,8 @@ public class CourseDto {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
 
+    private List<CourseSessionDto> sessions;
+
     private Integer totalSessions;
     private Integer completedSessions;
     private List<String> prerequisites;

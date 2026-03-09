@@ -32,6 +32,7 @@ public class CourseCreateRequest {
 
     private List<String> tags;
 
+
     @NotNull(message = "Price per session is required")
     @DecimalMin(value = "0.0", inclusive = false, message = "Price must be greater than 0")
     private BigDecimal pricePerSession;

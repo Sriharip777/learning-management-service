@@ -46,5 +46,6 @@ public class SessionScheduleRequest {
     private Integer maxParticipants;
     private List<String> materialUrls;
     private String notes;
-}
 
+    private List<String> topics;
+}

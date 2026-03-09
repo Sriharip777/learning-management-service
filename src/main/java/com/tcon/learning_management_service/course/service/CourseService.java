@@ -1,4 +1,3 @@
-
 package com.tcon.learning_management_service.course.service;
 
 import com.tcon.learning_management_service.course.client.UserServiceClient;
@@ -11,6 +10,8 @@ import com.tcon.learning_management_service.course.repository.CourseRepository;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
 import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
 import com.tcon.learning_management_service.session.service.ClassSessionService;
+import com.tcon.learning_management_service.course.entity.CourseSession;
+import com.tcon.learning_management_service.course.dto.CourseSessionDto;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,6 +78,23 @@ public class CourseService {
                 .totalReviews(0)
                 .createdBy(teacherId)
                 .build();
+
+// NEW: store sessions (from SessionScheduleRequest) inside Course.sessions
+        if (request.getSessions() != null && !request.getSessions().isEmpty()) {
+            course.setSessions(
+                    request.getSessions().stream()
+                            .map(ssr -> CourseSession.builder()
+                                    .title(ssr.getTitle())
+                                    .description(ssr.getDescription())
+                                    .topics(ssr.getTopics())                 // make sure SessionScheduleRequest has topics
+                                    .scheduledStartTime(ssr.getScheduledStartTime())
+                                    .durationMinutes(ssr.getDurationMinutes())
+                                    .build()
+                            )
+                            .toList()
+            );
+        }
+
 
         Course saved = courseRepository.save(course);
         log.info("Course created successfully with ID: {}", saved.getId());
@@ -329,7 +347,6 @@ public class CourseService {
         eventPublisher.publishCourseDeleted(courseId);
     }
 
-    // ✅ UPDATED: toDto method with teacher information enrichment
     private CourseDto toDto(Course course) {
         CourseDto dto = CourseDto.builder()
                 .id(course.getId())
@@ -351,6 +368,13 @@ public class CourseService {
                 .endDate(course.getEndDate())
                 .totalSessions(course.getTotalSessions())
                 .completedSessions(course.getCompletedSessions())
+                // NEW: map sessions -> CourseSessionDto
+                .sessions(
+                        course.getSessions() == null ? null :
+                                course.getSessions().stream()
+                                        .map(this::toSessionDto)
+                                        .toList()
+                )
                 .prerequisites(course.getPrerequisites())
                 .learningOutcomes(course.getLearningOutcomes())
                 .thumbnailUrl(course.getThumbnailUrl())
@@ -363,11 +387,10 @@ public class CourseService {
                 .updatedAt(course.getUpdatedAt())
                 .build();
 
-        // ✅ ENRICH WITH TEACHER INFORMATION
         enrichWithTeacherInfo(dto, course.getTeacherId());
-
         return dto;
     }
+
 
     // ✅ NEW METHOD: Fetch and populate teacher information
     private void enrichWithTeacherInfo(CourseDto courseDto, String teacherId) {
@@ -478,4 +501,29 @@ public class CourseService {
         log.info("Found {} students for teacher {}", uniqueStudentIds.size(), teacherId);
         return uniqueStudentIds;
     }
+
+    // --- session mapping helpers ---
+
+    private CourseSessionDto toSessionDto(CourseSession session) {
+        if (session == null) return null;
+        return CourseSessionDto.builder()
+                .title(session.getTitle())
+                .description(session.getDescription())
+                .topics(session.getTopics())
+                .scheduledStartTime(session.getScheduledStartTime())
+                .durationMinutes(session.getDurationMinutes())
+                .build();
+    }
+
+    private CourseSession toSessionEntity(CourseSessionDto dto) {
+        if (dto == null) return null;
+        return CourseSession.builder()
+                .title(dto.getTitle())
+                .description(dto.getDescription())
+                .topics(dto.getTopics())
+                .scheduledStartTime(dto.getScheduledStartTime())
+                .durationMinutes(dto.getDurationMinutes())
+                .build();
+    }
+
 }
