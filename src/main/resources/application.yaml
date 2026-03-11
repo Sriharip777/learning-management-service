@@ -55,6 +55,9 @@ eureka:
 user:
   service:
     url: ${USER_SERVICE_URL:http://localhost:8081}
+auth:
+  service:
+    url: http://localhost:8081
 
 # ✅ FEIGN CLIENT CONFIGURATION (ADD THIS)
 feign:

@@ -14,15 +14,28 @@ public interface CourseEnrollmentRepository extends MongoRepository<CourseEnroll
 
     List<CourseEnrollment> findByStudentId(String studentId);
 
-    List<CourseEnrollment> findByStudentIdAndStatus(String studentId, CourseEnrollment.EnrollmentStatus status);
+    List<CourseEnrollment> findByStudentIdAndStatus(
+            String studentId,
+            CourseEnrollment.EnrollmentStatus status
+    );
 
     List<CourseEnrollment> findByCourseId(String courseId);
 
-    List<CourseEnrollment> findByCourseIdAndStatus(String courseId, CourseEnrollment.EnrollmentStatus status);
+    List<CourseEnrollment> findByCourseIdAndStatus(
+            String courseId,
+            CourseEnrollment.EnrollmentStatus status
+    );
 
-    Long countByCourseIdAndStatus(String courseId, CourseEnrollment.EnrollmentStatus status);
+    long countByCourseIdAndStatus(
+            String courseId,
+            CourseEnrollment.EnrollmentStatus status
+    );
 
     boolean existsByCourseIdAndStudentId(String courseId, String studentId);
 
-    boolean existsByCourseIdAndStudentIdAndStatus(String courseId, String studentId, CourseEnrollment.EnrollmentStatus status);
+    boolean existsByCourseIdAndStudentIdAndStatus(
+            String courseId,
+            String studentId,
+            CourseEnrollment.EnrollmentStatus status
+    );
 }

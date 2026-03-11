@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.course.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,6 +21,5 @@ public class CourseSessionDto {
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime scheduledStartTime;
-
     private Integer durationMinutes;
 }

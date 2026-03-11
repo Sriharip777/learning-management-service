@@ -1,7 +1,6 @@
 package com.tcon.learning_management_service.course.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.tcon.learning_management_service.course.entity.CourseCategory;
 import com.tcon.learning_management_service.course.entity.CourseSchedule;
 import com.tcon.learning_management_service.course.entity.CourseStatus;
 import lombok.AllArgsConstructor;
@@ -22,10 +21,18 @@ public class CourseDto {
     private String id;
     private String teacherId;
     private String teacherName;
+
     private String title;
     private String description;
-    private CourseCategory category;
-    private List<String> tags;
+
+    private String gradeId;
+    private String subjectId;
+    private List<String> topicIds;
+
+    private String gradeName;
+    private String subjectName;
+    private List<String> topicNames;
+
     private CourseStatus status;
     private BigDecimal pricePerSession;
     private String currency;
@@ -61,7 +68,7 @@ public class CourseDto {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
 
-    //  TEACHER INFORMATION
+    // teacher info (unchanged)
     private String teacherEmail;
     private String teacherBio;
     private List<String> teacherSubjects;

@@ -48,4 +48,9 @@ public class CourseUpdateRequest {
     private List<String> materialUrls;
     private Boolean isDemoAvailable;
     private Integer demoSessionDuration;
+
+    // mapping updates
+    private String gradeId;
+    private String subjectId;
+    private List<String> topicIds;
 }

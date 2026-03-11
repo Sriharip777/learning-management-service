@@ -25,31 +25,30 @@ public class CourseEnrollmentService {
     private final CourseEventPublisher eventPublisher;
 
     @Transactional
-    public CourseEnrollment enrollStudent(String courseId, String studentId, String studentName,
-                                          String studentEmail, String paymentId, BigDecimal amountPaid) {
+    public CourseEnrollment enrollStudent(String courseId,
+                                          String studentId,
+                                          String studentName,
+                                          String studentEmail,
+                                          String paymentId,
+                                          BigDecimal amountPaid) {
         log.info("Enrolling student {} in course {}", studentId, courseId);
 
-        // Get course
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        // Validate course status
         if (course.getStatus() != CourseStatus.PUBLISHED) {
             throw new IllegalArgumentException("Course is not available for enrollment");
         }
 
-        // Check if already enrolled
         if (enrollmentRepository.existsByCourseIdAndStudentId(courseId, studentId)) {
             throw new IllegalArgumentException("Student is already enrolled in this course");
         }
 
-        // Check capacity
         if (course.getMaxStudents() != null &&
                 course.getCurrentEnrollments() >= course.getMaxStudents()) {
             throw new IllegalArgumentException("Course is full");
         }
 
-        // Create enrollment
         CourseEnrollment enrollment = CourseEnrollment.builder()
                 .courseId(courseId)
                 .studentId(studentId)
@@ -66,13 +65,10 @@ public class CourseEnrollmentService {
 
         CourseEnrollment saved = enrollmentRepository.save(enrollment);
 
-        // Update course enrollment count
         course.setCurrentEnrollments(course.getCurrentEnrollments() + 1);
         courseRepository.save(course);
 
         log.info("Student enrolled successfully: {}", saved.getId());
-
-        // Publish event
         eventPublisher.publishStudentEnrolled(courseId, studentId, studentName);
 
         return saved;
@@ -110,15 +106,13 @@ public class CourseEnrollmentService {
         enrollment.setCancelledAt(LocalDateTime.now());
         enrollmentRepository.save(enrollment);
 
-        // Update course enrollment count
         Course course = courseRepository.findById(enrollment.getCourseId())
                 .orElseThrow(() -> new IllegalArgumentException("Course not found"));
+
         course.setCurrentEnrollments(Math.max(0, course.getCurrentEnrollments() - 1));
         courseRepository.save(course);
 
         log.info("Enrollment cancelled successfully: {}", enrollmentId);
-
-        // Publish event
         eventPublisher.publishStudentUnenrolled(enrollment.getCourseId(), studentId);
     }
 
@@ -129,18 +123,19 @@ public class CourseEnrollmentService {
 
         enrollment.setSessionsAttended(sessionsAttended);
 
-        if (enrollment.getTotalSessions() > 0) {
-            double progress = (sessionsAttended * 100.0) / enrollment.getTotalSessions();
+        Integer totalSessions = enrollment.getTotalSessions();
+        if (totalSessions != null && totalSessions > 0) {
+            double progress = (sessionsAttended * 100.0) / totalSessions;
             enrollment.setProgressPercentage(Math.min(progress, 100.0));
-        }
 
-        // Mark as completed if all sessions attended
-        if (sessionsAttended >= enrollment.getTotalSessions()) {
-            enrollment.setStatus(CourseEnrollment.EnrollmentStatus.COMPLETED);
-            enrollment.setCompletedAt(LocalDateTime.now());
+            if (sessionsAttended >= totalSessions) {
+                enrollment.setStatus(CourseEnrollment.EnrollmentStatus.COMPLETED);
+                enrollment.setCompletedAt(LocalDateTime.now());
+            }
         }
 
         enrollmentRepository.save(enrollment);
-        log.info("Enrollment progress updated: {} - {}%", enrollmentId, enrollment.getProgressPercentage());
+        log.info("Enrollment progress updated: {} - {}%",
+                enrollmentId, enrollment.getProgressPercentage());
     }
 }

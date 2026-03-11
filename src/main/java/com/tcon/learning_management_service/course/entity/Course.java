@@ -26,13 +26,22 @@ public class Course {
     @Id
     private String id;
 
+    // Keep if you still map a teacher for that course
     @Indexed
     private String teacherId;
 
     private String title;
     private String description;
-    private CourseCategory category;
-    private List<String> tags;
+
+    // NEW: master data mapping
+    @Indexed
+    private String gradeId;
+
+    @Indexed
+    private String subjectId;
+
+    @Builder.Default
+    private List<String> topicIds = new ArrayList<>();
 
     @Builder.Default
     private CourseStatus status = CourseStatus.DRAFT;
@@ -47,7 +56,7 @@ public class Course {
     private Integer currentEnrollments = 0;
 
     private String gradeLevel;
-    private String difficulty; // BEGINNER, INTERMEDIATE, ADVANCED
+    private String difficulty;
 
     private CourseSchedule schedule;
 

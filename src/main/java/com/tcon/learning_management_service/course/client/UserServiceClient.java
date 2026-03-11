@@ -1,13 +1,16 @@
 package com.tcon.learning_management_service.course.client;
 
-
 import com.tcon.learning_management_service.course.dto.TeacherResponseDto;
 import com.tcon.learning_management_service.course.dto.UserResponseDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "user-service", url = "${user.service.url}", configuration = com.tcon.learning_management_service.config.FeignClientConfiguration.class)
+@FeignClient(
+        name = "user-service",
+        url = "${user.service.url}",
+        configuration = com.tcon.learning_management_service.config.FeignClientConfiguration.class
+)
 public interface UserServiceClient {
 
     @GetMapping("/api/teachers/{teacherId}")

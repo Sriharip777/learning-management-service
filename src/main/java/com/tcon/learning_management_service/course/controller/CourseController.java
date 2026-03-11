@@ -1,4 +1,5 @@
 package com.tcon.learning_management_service.course.controller;
+
 import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
 import com.tcon.learning_management_service.course.dto.CourseDto;
 import com.tcon.learning_management_service.course.dto.CourseSearchDto;
@@ -12,7 +13,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 import java.util.Map;
 
@@ -26,25 +29,94 @@ public class CourseController {
     private final CourseSearchService courseSearchService;
     private final CourseEnrollmentService enrollmentService;
 
+    // =========================
+    //        ADMIN ONLY
+    // =========================
+
+    /**
+     * Create course (ADMIN only), course mapped to grade/subject/topics.
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<CourseDto> createCourse(
-            @RequestHeader("X-User-Id") String teacherId,
+            @RequestHeader("X-User-Id") String adminId,
             @Valid @RequestBody CourseCreateRequest request) {
-        log.info("Creating course for teacher: {}", teacherId);
-        CourseDto course = courseService.createCourse(teacherId, request);
+        log.info("Admin {} creating course", adminId);
+        CourseDto course = courseService.createCourseByAdmin(adminId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(course);
     }
+
+    /**
+     * Update course (ADMIN only).
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PutMapping("/{courseId}")
+    public ResponseEntity<CourseDto> updateCourse(
+            @PathVariable String courseId,
+            @RequestHeader("X-User-Id") String adminId,
+            @Valid @RequestBody CourseUpdateRequest request) {
+        log.info("Admin {} updating course {}", adminId, courseId);
+        CourseDto course = courseService.updateCourseByAdmin(courseId, adminId, request);
+        return ResponseEntity.ok(course);
+    }
+
+    /**
+     * Publish course (ADMIN only).
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PatchMapping("/{courseId}/publish")
+    public ResponseEntity<Map<String, String>> publishCourse(
+            @PathVariable String courseId,
+            @RequestHeader("X-User-Id") String adminId) {
+        log.info("Admin {} publishing course {}", adminId, courseId);
+        courseService.publishCourseByAdmin(courseId, adminId);
+        return ResponseEntity.ok(Map.of("message", "Course published successfully"));
+    }
+
+    /**
+     * Unpublish course (ADMIN only).
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PatchMapping("/{courseId}/unpublish")
+    public ResponseEntity<Map<String, String>> unpublishCourse(
+            @PathVariable String courseId,
+            @RequestHeader("X-User-Id") String adminId) {
+        log.info("Admin {} unpublishing course {}", adminId, courseId);
+        courseService.unpublishCourseByAdmin(courseId, adminId);
+        return ResponseEntity.ok(Map.of("message", "Course unpublished successfully"));
+    }
+
+    /**
+     * Soft-delete course (ADMIN only).
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @DeleteMapping("/{courseId}")
+    public ResponseEntity<Map<String, String>> deleteCourse(
+            @PathVariable String courseId,
+            @RequestHeader("X-User-Id") String adminId) {
+        log.info("Admin {} deleting course {}", adminId, courseId);
+        courseService.deleteCourseByAdmin(courseId, adminId);
+        return ResponseEntity.ok(Map.of("message", "Course deleted successfully"));
+    }
+
+    /**
+     * Optional: list courses for a teacher (ADMIN view).
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/teacher/{teacherId}")
+    public ResponseEntity<List<CourseDto>> getTeacherCourses(@PathVariable String teacherId) {
+        List<CourseDto> courses = courseService.getTeacherCourses(teacherId);
+        return ResponseEntity.ok(courses);
+    }
+
+    // =========================
+    //      PUBLIC / GENERAL
+    // =========================
 
     @GetMapping("/{courseId}")
     public ResponseEntity<CourseDto> getCourse(@PathVariable String courseId) {
         CourseDto course = courseService.getCourse(courseId);
         return ResponseEntity.ok(course);
-    }
-
-    @GetMapping("/teacher/{teacherId}")
-    public ResponseEntity<List<CourseDto>> getTeacherCourses(@PathVariable String teacherId) {
-        List<CourseDto> courses = courseService.getTeacherCourses(teacherId);
-        return ResponseEntity.ok(courses);
     }
 
     @GetMapping("/published")
@@ -53,49 +125,15 @@ public class CourseController {
         return ResponseEntity.ok(courses);
     }
 
-    @PutMapping("/{courseId}")
-    public ResponseEntity<CourseDto> updateCourse(
-            @PathVariable String courseId,
-            @RequestHeader("X-User-Id") String teacherId,
-            @Valid @RequestBody CourseUpdateRequest request) {
-        CourseDto course = courseService.updateCourse(courseId, teacherId, request);
-        return ResponseEntity.ok(course);
-    }
-
-    // ✅ CHANGE FROM @PostMapping TO @PatchMapping
-    @PatchMapping("/{courseId}/publish")
-    public ResponseEntity<Map<String, String>> publishCourse(
-            @PathVariable String courseId,
-            @RequestHeader("X-User-Id") String teacherId) {
-        log.info("Publishing course: {} by teacher: {}", courseId, teacherId);
-        courseService.publishCourse(courseId, teacherId);
-        return ResponseEntity.ok(Map.of("message", "Course published successfully"));
-    }
-
-    // ✅ ADD THIS NEW ENDPOINT
-    @PatchMapping("/{courseId}/unpublish")
-    public ResponseEntity<Map<String, String>> unpublishCourse(
-            @PathVariable String courseId,
-            @RequestHeader("X-User-Id") String teacherId) {
-        log.info("Unpublishing course: {} by teacher: {}", courseId, teacherId);
-        courseService.unpublishCourse(courseId, teacherId);
-        return ResponseEntity.ok(Map.of("message", "Course unpublished successfully"));
-    }
-
-
-    @DeleteMapping("/{courseId}")
-    public ResponseEntity<Map<String, String>> deleteCourse(
-            @PathVariable String courseId,
-            @RequestHeader("X-User-Id") String teacherId) {
-        courseService.deleteCourse(courseId, teacherId);
-        return ResponseEntity.ok(Map.of("message", "Course deleted successfully"));
-    }
-
     @PostMapping("/search")
     public ResponseEntity<List<CourseDto>> searchCourses(@RequestBody CourseSearchDto searchDto) {
         List<CourseDto> courses = courseSearchService.searchCourses(searchDto);
         return ResponseEntity.ok(courses);
     }
+
+    // =========================
+    //        ENROLLMENT
+    // =========================
 
     @PostMapping("/{courseId}/enroll")
     public ResponseEntity<CourseEnrollment> enrollStudent(
@@ -128,15 +166,6 @@ public class CourseController {
         return ResponseEntity.ok(enrollments);
     }
 
-    @GetMapping("/can-communicate")
-    public ResponseEntity<Boolean> canUsersCommunicate(
-            @RequestParam String user1,
-            @RequestParam String user2) {
-        log.info("Checking if {} can communicate with {}", user1, user2);
-        boolean canCommunicate = courseService.canUsersCommunicate(user1, user2);
-        return ResponseEntity.ok(canCommunicate);
-    }
-
     @DeleteMapping("/enrollments/{enrollmentId}")
     public ResponseEntity<Map<String, String>> cancelEnrollment(
             @PathVariable String enrollmentId,
@@ -145,7 +174,18 @@ public class CourseController {
         return ResponseEntity.ok(Map.of("message", "Enrollment cancelled successfully"));
     }
 
-    // ✅ ADD THESE TO YOUR CourseController
+    // =========================
+    //  COMMUNICATION MAPPING
+    // =========================
+
+    @GetMapping("/can-communicate")
+    public ResponseEntity<Boolean> canUsersCommunicate(
+            @RequestParam String user1,
+            @RequestParam String user2) {
+        log.info("Checking if {} can communicate with {}", user1, user2);
+        boolean canCommunicate = courseService.canUsersCommunicate(user1, user2);
+        return ResponseEntity.ok(canCommunicate);
+    }
 
     @GetMapping("/student/{studentId}/teachers")
     public ResponseEntity<List<String>> getTeachersForStudent(@PathVariable String studentId) {
@@ -160,5 +200,4 @@ public class CourseController {
         List<String> studentIds = courseService.getStudentsForTeacher(teacherId);
         return ResponseEntity.ok(studentIds);
     }
-
 }

@@ -1,5 +1,5 @@
 package com.tcon.learning_management_service.course.dto;
-import com.tcon.learning_management_service.course.entity.CourseCategory;
+
 import com.tcon.learning_management_service.course.entity.CourseSchedule;
 import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
 import jakarta.validation.Valid;
@@ -27,11 +27,14 @@ public class CourseCreateRequest {
     @Size(min = 20, max = 5000, message = "Description must be between 20 and 5000 characters")
     private String description;
 
-    @NotNull(message = "Category is required")
-    private CourseCategory category;
+    @NotBlank(message = "Grade ID is required")
+    private String gradeId;
 
-    private List<String> tags;
+    @NotBlank(message = "Subject ID is required")
+    private String subjectId;
 
+    @NotEmpty(message = "At least one topic is required")
+    private List<String> topicIds;
 
     @NotNull(message = "Price per session is required")
     @DecimalMin(value = "0.0", inclusive = false, message = "Price must be greater than 0")
@@ -78,5 +81,4 @@ public class CourseCreateRequest {
 
     private Integer demoSessionDuration;
     private List<SessionScheduleRequest> sessions;
-
 }

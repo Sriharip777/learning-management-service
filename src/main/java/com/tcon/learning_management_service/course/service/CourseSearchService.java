@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.course.service;
 
-
 import com.tcon.learning_management_service.course.dto.CourseDto;
 import com.tcon.learning_management_service.course.dto.CourseSearchDto;
 import com.tcon.learning_management_service.course.entity.Course;
@@ -41,13 +40,23 @@ public class CourseSearchService {
             criteriaList.add(keywordCriteria);
         }
 
-        // Category filter
-        if (searchDto.getCategory() != null) {
-            criteriaList.add(Criteria.where("category").is(searchDto.getCategory()));
+        // Grade filter (replaces old category)
+        if (searchDto.getGradeId() != null && !searchDto.getGradeId().isEmpty()) {
+            criteriaList.add(Criteria.where("gradeId").is(searchDto.getGradeId()));
+        }
+
+        // Subject filter
+        if (searchDto.getSubjectId() != null && !searchDto.getSubjectId().isEmpty()) {
+            criteriaList.add(Criteria.where("subjectId").is(searchDto.getSubjectId()));
+        }
+
+        // Topic filter
+        if (searchDto.getTopicIds() != null && !searchDto.getTopicIds().isEmpty()) {
+            criteriaList.add(Criteria.where("topicIds").in(searchDto.getTopicIds()));
         }
 
         // Teacher filter
-        if (searchDto.getTeacherId() != null) {
+        if (searchDto.getTeacherId() != null && !searchDto.getTeacherId().isEmpty()) {
             criteriaList.add(Criteria.where("teacherId").is(searchDto.getTeacherId()));
         }
 
@@ -60,12 +69,12 @@ public class CourseSearchService {
         }
 
         // Grade level filter
-        if (searchDto.getGradeLevel() != null) {
+        if (searchDto.getGradeLevel() != null && !searchDto.getGradeLevel().isEmpty()) {
             criteriaList.add(Criteria.where("gradeLevel").is(searchDto.getGradeLevel()));
         }
 
         // Difficulty filter
-        if (searchDto.getDifficulty() != null) {
+        if (searchDto.getDifficulty() != null && !searchDto.getDifficulty().isEmpty()) {
             criteriaList.add(Criteria.where("difficulty").is(searchDto.getDifficulty()));
         }
 
@@ -87,29 +96,22 @@ public class CourseSearchService {
             criteriaList.add(Criteria.where("isDemoAvailable").is(searchDto.getIsDemoAvailable()));
         }
 
-        // Tags filter
-        if (searchDto.getTags() != null && !searchDto.getTags().isEmpty()) {
-            criteriaList.add(Criteria.where("tags").in(searchDto.getTags()));
-        }
-
         // Combine all criteria
         if (!criteriaList.isEmpty()) {
             query.addCriteria(new Criteria().andOperator(criteriaList.toArray(new Criteria[0])));
         }
 
         // Sorting
-        Sort.Direction direction = searchDto.getSortDirection().equalsIgnoreCase("ASC")
+        Sort.Direction direction = "ASC".equalsIgnoreCase(searchDto.getSortDirection())
                 ? Sort.Direction.ASC
                 : Sort.Direction.DESC;
-        Sort sort = Sort.by(direction, searchDto.getSortBy());
-        query.with(sort);
+        query.with(Sort.by(direction, searchDto.getSortBy()));
 
         // Pagination
         Pageable pageable = PageRequest.of(searchDto.getPage(), searchDto.getSize());
         query.with(pageable);
 
         List<Course> courses = mongoTemplate.find(query, Course.class);
-
         log.info("Found {} courses matching search criteria", courses.size());
 
         return courses.stream()
@@ -123,8 +125,9 @@ public class CourseSearchService {
                 .teacherId(course.getTeacherId())
                 .title(course.getTitle())
                 .description(course.getDescription())
-                .category(course.getCategory())
-                .tags(course.getTags())
+                .gradeId(course.getGradeId())
+                .subjectId(course.getSubjectId())
+                .topicIds(course.getTopicIds())
                 .status(course.getStatus())
                 .pricePerSession(course.getPricePerSession())
                 .currency(course.getCurrency())

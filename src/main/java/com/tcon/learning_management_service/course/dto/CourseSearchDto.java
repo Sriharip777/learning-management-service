@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.course.dto;
 
-import com.tcon.learning_management_service.course.entity.CourseCategory;
 import com.tcon.learning_management_service.course.entity.CourseStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +15,12 @@ import java.util.List;
 @AllArgsConstructor
 public class CourseSearchDto {
     private String keyword;
-    private CourseCategory category;
+
+    // NEW: replaces category/tags
+    private String gradeId;
+    private String subjectId;
+    private List<String> topicIds;
+
     private String teacherId;
     private List<CourseStatus> statuses;
     private String gradeLevel;
@@ -25,7 +29,6 @@ public class CourseSearchDto {
     private BigDecimal maxPrice;
     private Double minRating;
     private Boolean isDemoAvailable;
-    private List<String> tags;
 
     @Builder.Default
     private Integer page = 0;
