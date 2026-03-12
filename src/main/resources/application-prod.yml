@@ -1,8 +1,14 @@
-# src/main/resources/application.yml
+server:
+  port: ${PORT:8084}
+  servlet:
+    context-path: /
+  error:
+    include-message: always
+    include-binding-errors: always
 
 spring:
   application:
-    name: learning-management-service
+    name: LEARNING-MANAGEMENT-SERVICE
 
   data:
     mongodb:
@@ -10,16 +16,16 @@ spring:
       database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
 
-  # ✅ Disable Kafka completely
+  # Disable Kafka completely in this service
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
-  # ✅ Kafka config (won't be used, but prevents errors)
+  # Placeholder Kafka config (not used because of exclude)
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     listener:
-      auto-startup: false  # CRITICAL: Prevents listeners from starting
+      auto-startup: false
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
       auto-offset-reset: earliest
@@ -34,30 +40,42 @@ spring:
       acks: all
       retries: 3
 
-server:
-  port: ${SERVER_PORT:8084}
-  servlet:
-    context-path: /
-  error:
-    include-message: always
-    include-binding-errors: always
-
+# ================================
+# EUREKA (prod)
+# ================================
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
     register-with-eureka: ${EUREKA_REGISTER:true}
     fetch-registry: ${EUREKA_FETCH:true}
   instance:
-    prefer-ip-address: true
-    lease-renewal-interval-in-seconds: 30
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:educonlearningmanagmentservice-64307221061.asia-south1.run.app}
+    prefer-ip-address: false
+    lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 90
-    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    instance-id: ${eureka.instance.hostname}:${server.port}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
+    home-page-url: https://${eureka.instance.hostname}/
+    status-page-url: https://${eureka.instance.hostname}/actuator/info
+    health-check-url: https://${eureka.instance.hostname}/actuator/health
 
+# ================================
+# USER / AUTH SERVICE URLS
+# ================================
 user:
   service:
-    url: ${USER_SERVICE_URL:http://localhost:8081}
+    url: ${USER_SERVICE_URL:https://educonauthservice-64307221061.asia-south1.run.app}
 
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:https://educonauthservice-64307221061.asia-south1.run.app}
+
+# ================================
+# FEIGN
+# ================================
 feign:
   client:
     config:
@@ -69,6 +87,9 @@ feign:
         connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
         readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
 
+# ================================
+# MANAGEMENT / METRICS
+# ================================
 management:
   endpoints:
     web:
@@ -82,13 +103,16 @@ management:
       prometheus:
         enabled: true
 
+# ================================
+# LOGGING
+# ================================
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
     com.tcon.learning_management_service: ${LOG_LEVEL_APP:INFO}
     org.springframework.data.mongodb: ${LOG_LEVEL_MONGO:WARN}
     org.springframework.cloud.loadbalancer: WARN
-    org.springframework.kafka: ERROR  # ✅ Suppress Kafka errors
+    org.springframework.kafka: ERROR
     io.github.resilience4j: INFO
     io.netty: ERROR
   pattern:
