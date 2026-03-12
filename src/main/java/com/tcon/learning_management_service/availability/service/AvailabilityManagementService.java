@@ -8,6 +8,8 @@ import com.tcon.learning_management_service.availability.entity.TeacherAvailabil
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
 import com.tcon.learning_management_service.availability.repository.DateSpecificAvailabilityRepository;
 import com.tcon.learning_management_service.availability.repository.TeacherAvailabilityRepository;
+import com.tcon.learning_management_service.availability.dto.WeeklyPatternDto;
+import com.tcon.learning_management_service.availability.dto.SessionMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,7 +38,11 @@ public class AvailabilityManagementService {
             Map<DayOfWeek, List<TimeSlot>> weeklyAvailability,
             String timezone,
             Integer bufferTimeMinutes,
-            Integer maxSessionsPerDay) {
+            Integer maxSessionsPerDay,
+            Boolean oneOnOneEnabled,
+            Boolean groupEnabled,
+            WeeklyPatternDto weeklyPattern)
+    {
 
         log.info("Setting availability for teacher: {}", teacherId);
         log.info("Received weekly availability: {}", weeklyAvailability);
@@ -49,24 +55,28 @@ public class AvailabilityManagementService {
                         .build());
 
         // Set isAvailable to true for all slots if not set
+        // ✅ merge incoming weeklyAvailability into existing
         if (weeklyAvailability != null) {
-            weeklyAvailability.forEach((day, slots) -> {
-                if (slots != null) {
-                    slots.forEach(slot -> {
-                        if (slot.getIsAvailable() == null) {
-                            slot.setIsAvailable(true);
-                        }
-                        log.info("Slot for {}: {} - {} (available: {})",
-                                day, slot.getStartTime(), slot.getEndTime(), slot.getIsAvailable());
-                    });
-                }
+            Map<DayOfWeek, List<TimeSlot>> existing =
+                    Optional.ofNullable(availability.getWeeklyAvailability())
+                            .orElseGet(HashMap::new);
+
+            weeklyAvailability.forEach((day, incomingSlots) -> {
+                if (incomingSlots == null) return;
+
+                List<TimeSlot> daySlots = existing.getOrDefault(day, new ArrayList<>());
+                // append new slots (you can dedupe by start/end/mode later if needed)
+                daySlots.addAll(incomingSlots);
+                existing.put(day, daySlots);
             });
+
+            availability.setWeeklyAvailability(existing);
         }
 
-        availability.setWeeklyAvailability(weeklyAvailability);
         availability.setTimezone(timezone != null ? timezone : "UTC");
         availability.setBufferTimeMinutes(bufferTimeMinutes != null ? bufferTimeMinutes : 15);
         availability.setMaxSessionsPerDay(maxSessionsPerDay);
+
 
         TeacherAvailability saved = availabilityRepository.save(availability);
         log.info("Availability set successfully for teacher: {} with {} days configured",
@@ -162,17 +172,46 @@ public class AvailabilityManagementService {
     public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
         log.info("💾 Saving batch date-specific availability for teacher: {}", request.getTeacherId());
 
+        // NEW: persist session flags + weekly pattern on TeacherAvailability
+        TeacherAvailability availability = availabilityRepository
+                .findByTeacherId(request.getTeacherId())
+                .orElse(TeacherAvailability.builder()
+                        .teacherId(request.getTeacherId())
+                        .weeklyAvailability(new HashMap<>())
+                        .dateOverrides(new ArrayList<>())
+                        .build());
+
+        availability.setOneOnOneEnabled(request.getOneOnOneEnabled());
+        availability.setGroupEnabled(request.getGroupEnabled());
+
+        if (request.getWeeklyPattern() != null) {
+            WeeklyPatternDto p = request.getWeeklyPattern();
+            availability.setWeeklyPatternEnabled(Boolean.TRUE.equals(p.getEnabled()));
+            availability.setWeeklyPatternDay1(p.getDay1());
+            availability.setWeeklyPatternDay2(p.getDay2());
+            availability.setWeeklyPatternStart(p.getTimeStart());
+            availability.setWeeklyPatternEnd(p.getTimeEnd());
+        } else {
+            availability.setWeeklyPatternEnabled(null);
+            availability.setWeeklyPatternDay1(null);
+            availability.setWeeklyPatternDay2(null);
+            availability.setWeeklyPatternStart(null);
+            availability.setWeeklyPatternEnd(null);
+        }
+
+        availabilityRepository.save(availability);
+
+        // existing per-date saving logic
         for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
             LocalDate date = LocalDate.parse(dateDto.getDate());
 
-            // Set isAvailable for all slots
             dateDto.getTimeSlots().forEach(slot -> {
                 if (slot.getIsAvailable() == null) {
                     slot.setIsAvailable(true);
                 }
             });
 
-            DateSpecificAvailability availability = DateSpecificAvailability.builder()
+            DateSpecificAvailability entity = DateSpecificAvailability.builder()
                     .teacherId(request.getTeacherId())
                     .date(date)
                     .timeSlots(dateDto.getTimeSlots())
@@ -180,20 +219,23 @@ public class AvailabilityManagementService {
                     .bufferTimeMinutes(request.getBufferTimeMinutes())
                     .build();
 
-            // Delete existing if present (upsert behavior)
             dateSpecificRepository.findByTeacherIdAndDate(request.getTeacherId(), date)
-                    .ifPresent(existing -> dateSpecificRepository.delete(existing));
+                    .ifPresent(dateSpecificRepository::delete);
 
-            dateSpecificRepository.save(availability);
+            dateSpecificRepository.save(entity);
             log.info("✅ Saved date-specific availability for {}", dateDto.getDate());
         }
     }
 
+
+
     /**
      * ✅ Get all date-specific availability for a teacher
      */
-    public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId) {
-        log.info("📅 Fetching date-specific availability for teacher: {}", teacherId);
+    // AvailabilityManagementService.java
+
+    public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId, SessionMode mode) {
+        log.info("📅 Fetching date-specific availability for teacher: {} with mode: {}", teacherId, mode);
 
         LocalDate today = LocalDate.now();
         LocalDate futureDate = today.plusMonths(6);
@@ -201,15 +243,36 @@ public class AvailabilityManagementService {
         List<DateSpecificAvailability> availabilities = dateSpecificRepository
                 .findByTeacherIdAndDateBetween(teacherId, today, futureDate);
 
-        Map<String, List<TimeSlot>> result = availabilities.stream()
-                .collect(Collectors.toMap(
-                        avail -> avail.getDate().toString(),
-                        DateSpecificAvailability::getTimeSlots
-                ));
+        Map<String, List<TimeSlot>> result = new HashMap<>();
 
-        log.info("✅ Found {} date-specific entries", result.size());
+        for (DateSpecificAvailability avail : availabilities) {
+            String dateKey = avail.getDate().toString();
+            List<TimeSlot> allSlotsForDate = avail.getTimeSlots();
+
+            List<TimeSlot> filteredSlots;
+            if (mode == null) {
+                // no filter → all slots
+                filteredSlots = allSlotsForDate;
+            } else {
+                filteredSlots = allSlotsForDate.stream()
+                        .filter(slot ->
+                                // decide your rule; for 1:1 maybe include null
+                                (mode == SessionMode.ONE_ON_ONE && slot.getMode() == null) ||
+                                        slot.getMode() == mode
+                        )
+                        .toList();
+            }
+
+            if (!filteredSlots.isEmpty()) {
+                result.put(dateKey, filteredSlots);
+            }
+        }
+
+        log.info("✅ Found {} date-specific entries after mode filter", result.size());
         return result;
     }
+
+
 
     /**
      * ✅ Delete date-specific availability
@@ -254,6 +317,19 @@ public class AvailabilityManagementService {
                 .weeklyAvailability(availability.getWeeklyAvailability())
                 .bufferTimeMinutes(availability.getBufferTimeMinutes())
                 .maxSessionsPerDay(availability.getMaxSessionsPerDay())
+                // NEW
+                .oneOnOneEnabled(availability.getOneOnOneEnabled())
+                .groupEnabled(availability.getGroupEnabled())
+                .weeklyPattern(
+                        WeeklyPatternDto.builder()
+                                .enabled(availability.getWeeklyPatternEnabled())
+                                .day1(availability.getWeeklyPatternDay1())
+                                .day2(availability.getWeeklyPatternDay2())
+                                .timeStart(availability.getWeeklyPatternStart())
+                                .timeEnd(availability.getWeeklyPatternEnd())
+                                .build()
+                )
                 .build();
     }
+
 }

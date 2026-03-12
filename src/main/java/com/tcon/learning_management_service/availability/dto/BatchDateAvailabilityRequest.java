@@ -17,4 +17,9 @@ public class BatchDateAvailabilityRequest {
     private List<DateSpecificAvailabilityDto> dateSlots;
     private String timezone;
     private Integer bufferTimeMinutes;
+
+    // NEW
+    private Boolean oneOnOneEnabled;
+    private Boolean groupEnabled;
+    private WeeklyPatternDto weeklyPattern;
 }

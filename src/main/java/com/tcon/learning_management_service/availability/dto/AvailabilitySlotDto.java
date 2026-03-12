@@ -16,4 +16,6 @@ public class AvailabilitySlotDto {
     private LocalTime startTime;
     private LocalTime endTime;
     private Boolean isAvailable;
+
+
 }

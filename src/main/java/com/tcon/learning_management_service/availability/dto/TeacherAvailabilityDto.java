@@ -21,4 +21,8 @@ public class TeacherAvailabilityDto {
     private Map<DayOfWeek, List<TimeSlot>> weeklyAvailability;
     private Integer bufferTimeMinutes;
     private Integer maxSessionsPerDay;
+
+    private Boolean oneOnOneEnabled;
+    private Boolean groupEnabled;
+    private WeeklyPatternDto weeklyPattern;
 }

@@ -47,6 +47,15 @@ public class TeacherAvailability {
     // Maximum sessions per day
     private Integer maxSessionsPerDay;
 
+    private Boolean oneOnOneEnabled;
+    private Boolean groupEnabled;
+
+    private Integer weeklyPatternDay1;    // 0-6
+    private Integer weeklyPatternDay2;    // 0-6
+    private String weeklyPatternStart;    // "HH:mm"
+    private String weeklyPatternEnd;      // "HH:mm"
+    private Boolean weeklyPatternEnabled;
+
     @CreatedDate
     private LocalDateTime createdAt;
 

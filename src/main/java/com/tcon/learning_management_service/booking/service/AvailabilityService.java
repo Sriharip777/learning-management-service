@@ -52,31 +52,48 @@ public class AvailabilityService {
             while (!currentDate.isAfter(endDate)) {
                 DayOfWeek dayOfWeek = currentDate.getDayOfWeek();
 
-                List<TimeSlot> daySlots = teacherAvailability.getWeeklyAvailability()
-                        .getOrDefault(dayOfWeek, new ArrayList<>());
+                List<TimeSlot> daySlots = new ArrayList<>(
+                        teacherAvailability.getWeeklyAvailability()
+                                .getOrDefault(dayOfWeek, new ArrayList<>())
+                );
+
+                // ✅ NEW: if weekly pattern is enabled, add that pattern as a slot
+                if (Boolean.TRUE.equals(teacherAvailability.getWeeklyPatternEnabled())) {
+                    Integer d1 = teacherAvailability.getWeeklyPatternDay1();
+                    Integer d2 = teacherAvailability.getWeeklyPatternDay2();
+
+                    int jsDay = dayOfWeek.getValue() % 7; // JS: 0=Sun, 1=Mon...; Java: 1=Mon..7=Sun
+                    if ((d1 != null && jsDay == d1) || (d2 != null && jsDay == d2)) {
+                        TimeSlot patternSlot = TimeSlot.builder()
+                                .startTime(teacherAvailability.getWeeklyPatternStart()) // "HH:mm"
+                                .endTime(teacherAvailability.getWeeklyPatternEnd())
+                                .isAvailable(true)
+                                .build();
+                        daySlots.add(patternSlot);
+                    }
+                }
 
                 for (TimeSlot slot : daySlots) {
-                    // ⭐ Parse string to LocalTime
                     LocalTime slotStartTime = LocalTime.parse(slot.getStartTime());
                     LocalTime slotEndTime = LocalTime.parse(slot.getEndTime());
-
                     LocalDateTime slotStart = LocalDateTime.of(currentDate, slotStartTime);
                     LocalDateTime slotEnd = LocalDateTime.of(currentDate, slotEndTime);
 
                     if (!slotStart.isBefore(start) && !slotEnd.isAfter(end)) {
                         boolean isBooked = isSlotBooked(teacherId, slotStart, slotEnd);
-
                         availabilityList.add(AvailabilityDto.builder()
                                 .startTime(slotStart)
                                 .endTime(slotEnd)
                                 .isAvailable(!isBooked)
                                 .reason(isBooked ? "Session scheduled" : null)
+                                .mode(slot.getMode())
                                 .build());
                     }
                 }
 
                 currentDate = currentDate.plusDays(1);
             }
+
 
             log.info("Generated {} availability slots", availabilityList.size());
 

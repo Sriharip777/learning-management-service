@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
 import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
+import com.tcon.learning_management_service.availability.dto.SessionMode;
 import com.tcon.learning_management_service.availability.service.AvailabilityManagementService;
+import com.tcon.learning_management_service.availability.dto.WeeklyPatternDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -42,25 +44,28 @@ public class AvailabilityController {
         log.info("User ID: {}", userId);
         log.info("Request body: {}", request);
 
-        // Authorization check
         if (!userId.equals(teacherId)) {
             log.error("Unauthorized: user {} trying to set availability for teacher {}", userId, teacherId);
             throw new IllegalArgumentException("Unauthorized: You can only set your own availability");
         }
 
         try {
-            // Convert weeklyAvailability from request
-            Map<DayOfWeek, List<TimeSlot>> weeklyAvailability = convertWeeklyAvailability(request.getWeeklyAvailability());
+            Map<DayOfWeek, List<TimeSlot>> weeklyAvailability =
+                    convertWeeklyAvailability(request.getWeeklyAvailability());
 
             log.info("Converted weekly availability: {}", weeklyAvailability);
 
-            TeacherAvailabilityDto availability = availabilityManagementService.setTeacherAvailability(
-                    teacherId,
-                    weeklyAvailability,
-                    request.getTimezone(),
-                    request.getBufferTimeMinutes(),
-                    request.getMaxSessionsPerDay()
-            );
+            TeacherAvailabilityDto availability =
+                    availabilityManagementService.setTeacherAvailability(
+                            teacherId,
+                            weeklyAvailability,
+                            request.getTimezone(),
+                            request.getBufferTimeMinutes(),
+                            request.getMaxSessionsPerDay(),
+                            request.getOneOnOneEnabled(),
+                            request.getGroupEnabled(),
+                            request.getWeeklyPattern()
+                    );
 
             log.info("Successfully set availability for teacher: {}", teacherId);
             return ResponseEntity.ok(availability);
@@ -210,13 +215,14 @@ public class AvailabilityController {
      */
     @GetMapping("/date-specific/{teacherId}")
     public ResponseEntity<Map<String, List<TimeSlot>>> getDateSpecificAvailability(
-            @PathVariable String teacherId) {
+            @PathVariable String teacherId,
+            @RequestParam(required = false) SessionMode mode) {
 
-        log.info("📅 Fetching date-specific availability for teacher {}", teacherId);
+        log.info("📅 Fetching date-specific availability for teacher {} with mode {}", teacherId, mode);
 
         try {
             Map<String, List<TimeSlot>> availability =
-                    availabilityManagementService.getDateSpecificAvailability(teacherId);
+                    availabilityManagementService.getDateSpecificAvailability(teacherId, mode);
 
             log.info("✅ Found {} date-specific entries", availability.size());
             return ResponseEntity.ok(availability);
@@ -226,6 +232,7 @@ public class AvailabilityController {
             return ResponseEntity.status(500).body(new HashMap<>());
         }
     }
+
 
     /**
      * ✅ Delete specific date availability
@@ -307,12 +314,22 @@ public class AvailabilityController {
                 ? (Boolean) slotMap.get("isAvailable")
                 : true;
 
+        String modeStr = (String) slotMap.getOrDefault("mode", "ONE_ON_ONE");
+        SessionMode mode;
+        try {
+            mode = SessionMode.valueOf(modeStr);
+        } catch (IllegalArgumentException ex) {
+            mode = SessionMode.ONE_ON_ONE;
+        }
+
         return TimeSlot.builder()
                 .startTime(startTime)
                 .endTime(endTime)
                 .isAvailable(isAvailable)
+                .mode(mode)
                 .build();
     }
+
 
     // ==================== REQUEST/RESPONSE DTOs ====================
 
@@ -326,5 +343,8 @@ public class AvailabilityController {
         private Object weeklyAvailability; // Using Object to handle JSON deserialization
         private Integer bufferTimeMinutes;
         private Integer maxSessionsPerDay;
+        private Boolean oneOnOneEnabled;
+        private Boolean groupEnabled;
+        private WeeklyPatternDto weeklyPattern;
     }
 }
