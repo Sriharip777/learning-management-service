@@ -11,4 +11,7 @@ public interface SubmissionRepository extends MongoRepository<Submission, String
     Optional<Submission> findByAssignmentIdAndStudentId(String assignmentId, String studentId);
 
     List<Submission> findByAssignmentId(String assignmentId);
+
+    // Used for parent to view student's assignment results
+    List<Submission> findByStudentId(String studentId);
 }

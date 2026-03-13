@@ -25,6 +25,7 @@ public class QuestionService {
         question.setQuestionText(request.getQuestionText());
         question.setOptions(request.getOptions());
         question.setCorrectAnswer(request.getCorrectAnswer());
+        question.setReason(request.getReason());     // ✅ ADDED
         question.setTeacherId(request.getTeacherId());
 
         return questionRepository.save(question);

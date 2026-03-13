@@ -190,4 +190,12 @@ public class SubmissionService {
 
         return submissionRepository.findByAssignmentId(assignmentId);
     }
+
+    /**
+     * Parent view results for a student
+     */
+    public List<Submission> getResultsByStudent(String studentId) {
+
+        return submissionRepository.findByStudentId(studentId);
+    }
 }

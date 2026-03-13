@@ -58,4 +58,12 @@ public class AssignmentController {
     public List<Submission> getResults(@PathVariable String assignmentId) {
         return submissionService.getResults(assignmentId);
     }
+
+    /**
+     * Parent can view their child's assignment results
+     */
+    @GetMapping("/parent/student/{studentId}/results")
+    public List<Submission> getStudentResultsForParent(@PathVariable String studentId) {
+        return submissionService.getResultsByStudent(studentId);
+    }
 }

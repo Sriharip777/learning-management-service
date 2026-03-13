@@ -3,7 +3,7 @@ package com.tcon.learning_management_service.assignment.service;
 import com.tcon.learning_management_service.assignment.dto.AssignmentCreateRequest;
 import com.tcon.learning_management_service.assignment.dto.AssignStudentsRequest;
 import com.tcon.learning_management_service.assignment.entity.Assignment;
-import com.tcon.learning_management_service.assignment.entity.AssignmentStatus; // ✅ IMPORT ENUM
+import com.tcon.learning_management_service.assignment.entity.AssignmentStatus;
 import com.tcon.learning_management_service.assignment.repository.AssignmentRepository;
 import com.tcon.learning_management_service.assignment.validation.AssignmentValidator;
 import com.tcon.learning_management_service.exception.ResourceNotFoundException;
@@ -21,7 +21,6 @@ public class AssignmentService {
 
     /**
      * Teacher creates assignment
-     * Assignment must contain questionIds
      */
     public Assignment createAssignment(AssignmentCreateRequest request) {
 
@@ -33,13 +32,20 @@ public class AssignmentService {
         assignment.setTitle(request.getTitle());
         assignment.setDescription(request.getDescription());
         assignment.setTeacherId(request.getTeacherId());
-        assignment.setDueDate(request.getDueDate());
 
-        // Must contain questions
+        // Curriculum hierarchy
+        assignment.setGradeId(request.getGradeId());
+        assignment.setSubjectId(request.getSubjectId());
+        assignment.setTopicId(request.getTopicId());
+
+        // Questions inside assignment
         assignment.setQuestionIds(request.getQuestionIds());
 
-        // studentIds already initialized in entity (if you followed previous update)
-        assignment.setStatus(AssignmentStatus.CREATED);   // ✅ ENUM
+        // Deadline
+        assignment.setDueDate(request.getDueDate());
+
+        // Initial status
+        assignment.setStatus(AssignmentStatus.CREATED);
 
         return assignmentRepository.save(assignment);
     }
@@ -58,7 +64,7 @@ public class AssignmentService {
         assignmentValidator.validateStudentAssignment(request);
 
         assignment.setStudentIds(request.getStudentIds());
-        assignment.setStatus(AssignmentStatus.ACTIVE);   // ✅ ENUM
+        assignment.setStatus(AssignmentStatus.ACTIVE);
 
         return assignmentRepository.save(assignment);
     }

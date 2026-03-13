@@ -13,7 +13,16 @@ public class AssignmentCreateRequest {
 
     private String teacherId;
 
+    // Curriculum hierarchy
+    private String gradeId;
+
+    private String subjectId;
+
+    private String topicId;
+
+    // Questions included in the assignment
     private List<String> questionIds;
 
+    // Assignment deadline
     private LocalDateTime dueDate;
 }

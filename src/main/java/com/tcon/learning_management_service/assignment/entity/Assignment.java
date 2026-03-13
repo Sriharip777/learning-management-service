@@ -21,11 +21,20 @@ public class Assignment {
 
     private String teacherId;
 
+    // Curriculum hierarchy
+    private String gradeId;
+
+    private String subjectId;
+
+    private String topicId;
+
+    // Students assigned
     private List<String> studentIds = new ArrayList<>();
 
-    private List<String> questionIds;
+    // Questions inside assignment
+    private List<String> questionIds = new ArrayList<>();
 
-    // Deadline with time
+    // Deadline
     private LocalDateTime dueDate;
 
     private AssignmentStatus status;

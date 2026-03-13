@@ -15,9 +15,11 @@ public class Question {
 
     private String questionText;
 
-    private List<String> options;      // ✅ REQUIRED
+    private List<String> options;      // REQUIRED
 
-    private String correctAnswer;
+    private String correctAnswer;      // Correct answer
 
-    private String teacherId;          // ✅ REQUIRED
+    private String reason;             // Explanation for the correct answer
+
+    private String teacherId;          // REQUIRED
 }
