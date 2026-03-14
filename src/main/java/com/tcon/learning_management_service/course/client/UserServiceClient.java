@@ -16,6 +16,10 @@ public interface UserServiceClient {
     @GetMapping("/api/teachers/{teacherId}")
     TeacherResponseDto getTeacherById(@PathVariable("teacherId") String teacherId);
 
+    @GetMapping("/api/teacher/profile/{userId}")
+    TeacherResponseDto getTeacherByUserId(@PathVariable("userId") String userId);
+
+
     @GetMapping("/api/users/{userId}")
     UserResponseDto getUserById(@PathVariable("userId") String userId);
 }

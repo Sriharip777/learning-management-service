@@ -1,4 +1,10 @@
-# src/main/resources/application.yml
+server:
+  port: ${SERVER_PORT:8084}
+  servlet:
+    context-path: /
+  error:
+    include-message: always
+    include-binding-errors: always
 
 spring:
   application:
@@ -6,11 +12,10 @@ spring:
 
   data:
     mongodb:
-      uri: mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10
-      database: learning_management
+      uri: ${MONGODB_URI:mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10}
+      database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
 
-  # DISABLE KAFKA - Add this section
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
@@ -18,7 +23,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: learning-management-service
+      group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
       auto-offset-reset: earliest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -30,14 +35,6 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
-
-server:
-  port: ${SERVER_PORT:8084}
-  servlet:
-    context-path: /
-  error:
-    include-message: always
-    include-binding-errors: always
 
 eureka:
   client:
@@ -51,15 +48,13 @@ eureka:
     lease-expiration-duration-in-seconds: 90
     instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
 
-# ✅ USER SERVICE CONFIGURATION (ADD THIS)
 user:
   service:
     url: ${USER_SERVICE_URL:http://localhost:8081}
 auth:
   service:
-    url: http://localhost:8081
+    url: ${AUTH_SERVICE_URL:http://localhost:8081}
 
-# ✅ FEIGN CLIENT CONFIGURATION (ADD THIS)
 feign:
   client:
     config:
@@ -78,29 +73,19 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
   metrics:
     export:
       prometheus:
         enabled: true
 
-
 logging:
   level:
     root: INFO
-    com.tcon.api_gateway: DEBUG
-    org.springframework.cloud.gateway: INFO
-    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
-    org.springframework.cloud.loadbalancer: WARN
+    org.springframework.web: INFO
+    org.springframework.data.mongodb: INFO
     io.github.resilience4j: INFO
     reactor.netty: WARN
     io.netty: ERROR
-    org.springframework.data.redis: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    # ✅ DISABLED: No file logging = No git conflicts!
-  # file:  # <-- COMMENTED OUT
-  #   name: logs/api-gateway.log
-  #   max-size: 10MB
-  #   max-history: 30
-

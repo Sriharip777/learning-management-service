@@ -44,14 +44,12 @@ public class CourseService {
 
         validateDatesAndCapacity(request);
 
-        // 1) Validate grade
         Grade grade = gradeRepository.findById(request.getGradeId())
                 .orElseThrow(() -> new IllegalArgumentException("Grade not found: " + request.getGradeId()));
         if (Boolean.FALSE.equals(grade.getIsActive())) {
             throw new IllegalStateException("Grade is inactive: " + grade.getName());
         }
 
-        // 2) Validate subject belongs to grade
         Subject subject = subjectRepository.findById(request.getSubjectId())
                 .orElseThrow(() -> new IllegalArgumentException("Subject not found: " + request.getSubjectId()));
         if (!subject.getGradeId().equals(grade.getId())) {
@@ -61,7 +59,6 @@ public class CourseService {
             throw new IllegalStateException("Subject is inactive: " + subject.getName());
         }
 
-        // 3) Validate topics
         if (CollectionUtils.isEmpty(request.getTopicIds())) {
             throw new IllegalArgumentException("At least one topic must be selected");
         }
@@ -77,7 +74,6 @@ public class CourseService {
             throw new IllegalStateException("One or more topics are inactive");
         }
 
-        // 4) Map embedded sessions into Course.sessions
         List<CourseSession> sessionEntities = null;
         if (!CollectionUtils.isEmpty(request.getSessions())) {
             sessionEntities = request.getSessions().stream()
@@ -85,7 +81,6 @@ public class CourseService {
                     .toList();
         }
 
-        // 5) Build Course
         Course course = Course.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
@@ -123,10 +118,8 @@ public class CourseService {
         Course saved = courseRepository.save(course);
         log.info("Course created successfully with ID: {}", saved.getId());
 
-        // 6) Optionally create class sessions in session service
         autoCreateClassSessions(saved.getId(), null, request.getSessions());
 
-        // 7) Publish event
         eventPublisher.publishCourseCreated(saved);
 
         return toDtoWithMasterData(saved, grade, subject, topics);
@@ -139,12 +132,10 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        // 1) Determine new mapping IDs (fall back to existing if null)
         String newGradeId = request.getGradeId() != null ? request.getGradeId() : course.getGradeId();
         String newSubjectId = request.getSubjectId() != null ? request.getSubjectId() : course.getSubjectId();
         List<String> newTopicIds = request.getTopicIds() != null ? request.getTopicIds() : course.getTopicIds();
 
-        // 2) Validate master data
         Grade grade = gradeRepository.findById(newGradeId)
                 .orElseThrow(() -> new IllegalArgumentException("Grade not found: " + newGradeId));
         if (Boolean.FALSE.equals(grade.getIsActive())) {
@@ -175,7 +166,6 @@ public class CourseService {
             throw new IllegalStateException("One or more topics are inactive");
         }
 
-        // 3) Simple field updates
         if (request.getTitle() != null) course.setTitle(request.getTitle());
         if (request.getDescription() != null) course.setDescription(request.getDescription());
         if (request.getStatus() != null) course.setStatus(request.getStatus());
@@ -192,7 +182,6 @@ public class CourseService {
         if (request.getIsDemoAvailable() != null) course.setIsDemoAvailable(request.getIsDemoAvailable());
         if (request.getDemoSessionDuration() != null) course.setDemoSessionDuration(request.getDemoSessionDuration());
 
-        // 4) Apply new mapping
         course.setGradeId(newGradeId);
         course.setSubjectId(newSubjectId);
         course.setTopicIds(newTopicIds);
@@ -284,19 +273,9 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        Grade grade = null;
-        Subject subject = null;
-        List<Topic> topics = new ArrayList<>();
-
-        if (course.getGradeId() != null) {
-            grade = gradeRepository.findById(course.getGradeId()).orElse(null);
-        }
-        if (course.getSubjectId() != null) {
-            subject = subjectRepository.findById(course.getSubjectId()).orElse(null);
-        }
-        if (course.getTopicIds() != null && !course.getTopicIds().isEmpty()) {
-            topics = topicRepository.findAllById(course.getTopicIds());
-        }
+        Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
+        Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
+        List<Topic> topics = course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of();
 
         return toDtoWithMasterData(course, grade, subject, topics);
     }
@@ -328,8 +307,6 @@ public class CourseService {
     // =========================
 
     public boolean canUsersCommunicate(String user1, String user2) {
-        log.debug("Checking communication permission between {} and {}", user1, user2);
-
         List<CourseEnrollment> user1Enrollments = enrollmentRepository.findByStudentId(user1);
         for (CourseEnrollment enrollment : user1Enrollments) {
             if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
@@ -354,8 +331,6 @@ public class CourseService {
     }
 
     public List<String> getTeachersForStudent(String studentId) {
-        log.info("Finding teachers for student: {}", studentId);
-
         List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
                 studentId, CourseEnrollment.EnrollmentStatus.ACTIVE);
 
@@ -364,18 +339,13 @@ public class CourseService {
                 .distinct()
                 .toList();
 
-        List<String> teacherIds = courseRepository.findAllById(courseIds).stream()
+        return courseRepository.findAllById(courseIds).stream()
                 .map(Course::getTeacherId)
                 .distinct()
                 .toList();
-
-        log.info("Found {} teachers for student {}", teacherIds.size(), studentId);
-        return teacherIds;
     }
 
     public List<String> getStudentsForTeacher(String teacherId) {
-        log.info("Finding students for teacher: {}", teacherId);
-
         List<Course> courses = courseRepository.findByTeacherId(teacherId);
         List<String> courseIds = courses.stream().map(Course::getId).toList();
 
@@ -447,18 +417,16 @@ public class CourseService {
                 .updatedAt(course.getUpdatedAt())
                 .build();
 
-
         enrichWithTeacherInfo(dto, course.getTeacherId());
         return dto;
     }
 
-    private void enrichWithTeacherInfo(CourseDto courseDto, String teacherId) {
-        if (teacherId == null) {
-            return;
-        }
+    private void enrichWithTeacherInfo(CourseDto courseDto, String teacherUserId) {
+        if (teacherUserId == null) return;
+
         try {
-            log.debug("Fetching teacher information for teacherId: {}", teacherId);
-            TeacherResponseDto teacher = userServiceClient.getTeacherById(teacherId);
+            log.debug("Fetching teacher profile for userId: {}", teacherUserId);
+            TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
 
             if (teacher != null) {
                 courseDto.setTeacherBio(teacher.getBio());
@@ -483,30 +451,99 @@ public class CourseService {
                     }
                 }
 
-                Integer totalStudents = calculateTeacherTotalStudents(teacherId);
+                Integer totalStudents = calculateTeacherTotalStudents(teacherUserId);
                 courseDto.setTeacherTotalStudents(totalStudents);
             }
+        } catch (FeignException.BadRequest e) {
+            // 400 from auth-user-service: no teacher profile -> treat as generic instructor
+            log.warn("Teacher profile not found for userId {}: {}", teacherUserId, e.getMessage());
+            courseDto.setTeacherName("Expert Instructor");
         } catch (FeignException.NotFound e) {
-            log.warn("Teacher not found for teacherId: {}", teacherId);
+            log.warn("Teacher profile not found (404) for userId {}: {}", teacherUserId, e.getMessage());
             courseDto.setTeacherName("Expert Instructor");
         } catch (Exception e) {
-            log.error("Error fetching teacher information for teacherId: {}", teacherId, e);
+            log.error("Error fetching teacher information for userId: {}", teacherUserId, e);
             courseDto.setTeacherName("Expert Instructor");
         }
     }
 
-    private Integer calculateTeacherTotalStudents(String teacherId) {
+
+    private Integer calculateTeacherTotalStudents(String teacherUserId) {
         try {
-            List<Course> teacherCourses = courseRepository.findByTeacherId(teacherId);
+            List<Course> teacherCourses = courseRepository.findByTeacherId(teacherUserId);
             return teacherCourses.stream()
                     .filter(c -> c.getCurrentEnrollments() != null)
                     .mapToInt(Course::getCurrentEnrollments)
                     .sum();
         } catch (Exception e) {
-            log.error("Error calculating total students for teacherId: {}", teacherId, e);
+            log.error("Error calculating total students for teacher userId: {}", teacherUserId, e);
             return 0;
         }
     }
+    public List<AvailableTeacherDto> getAvailableTeachersForCourse(String courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        String teacherUserId = course.getTeacherId();
+        if (teacherUserId == null) {
+            return List.of();
+        }
+
+        try {
+            TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
+
+            Double hourlyRate = teacher != null && teacher.getHourlyRate() != null
+                    ? teacher.getHourlyRate()
+                    : (course.getPricePerSession() != null ? course.getPricePerSession().doubleValue() : null);
+
+            Double rating = teacher != null ? teacher.getAverageRating() : null;
+
+            UserResponseDto user = null;
+            if (teacher != null && teacher.getUserId() != null) {
+                user = userServiceClient.getUserById(teacher.getUserId());
+            }
+
+            String displayName = user != null && user.getName() != null ? user.getName() : "Expert Instructor";
+            String avatar = user != null ? user.getProfilePicture() : null;
+
+            return List.of(
+                    AvailableTeacherDto.builder()
+                            .id(teacherUserId)
+                            .name(displayName)
+                            .avatar(avatar)
+                            .hourlyRate(hourlyRate)
+                            .currency(course.getCurrency())
+                            .rating(rating)
+                            .subjects(teacher != null ? teacher.getSubjects() : null)
+                            .build()
+            );
+        } catch (FeignException.BadRequest | FeignException.NotFound e) {
+            log.warn("Teacher profile missing for userId {}, falling back: {}", teacherUserId, e.getMessage());
+            return List.of(
+                    AvailableTeacherDto.builder()
+                            .id(teacherUserId)
+                            .name("Expert Instructor")
+                            .hourlyRate(course.getPricePerSession() != null
+                                    ? course.getPricePerSession().doubleValue()
+                                    : null)
+                            .currency(course.getCurrency())
+                            .build()
+            );
+        } catch (Exception e) {
+            log.error("Error calling user-service for teacher {}", teacherUserId, e);
+            return List.of(
+                    AvailableTeacherDto.builder()
+                            .id(teacherUserId)
+                            .name("Expert Instructor")
+                            .hourlyRate(course.getPricePerSession() != null
+                                    ? course.getPricePerSession().doubleValue()
+                                    : null)
+                            .currency(course.getCurrency())
+                            .build()
+            );
+        }
+    }
+
 
     // =========================
     //      SESSION HELPERS
@@ -570,7 +607,6 @@ public class CourseService {
                     sessionRequest.setTitle("Session " + sessionNumber + " - " + sessionRequest.getTitle());
                 }
 
-                // teacherId may be null if admin creates course without specific teacher
                 classSessionService.scheduleSession(teacherId, sessionRequest);
 
                 log.info("Session {} created for course {}", sessionNumber, courseId);
