@@ -1,5 +1,4 @@
 package com.tcon.learning_management_service.course.controller;
-
 import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
 import com.tcon.learning_management_service.course.dto.CourseDto;
 import com.tcon.learning_management_service.course.dto.CourseSearchDto;
@@ -15,7 +14,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.Map;
 
@@ -102,9 +100,18 @@ public class CourseController {
     /**
      * Optional: list courses for a teacher (ADMIN view).
      */
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TEACHER')")
     @GetMapping("/teacher/{teacherId}")
-    public ResponseEntity<List<CourseDto>> getTeacherCourses(@PathVariable String teacherId) {
+    public ResponseEntity<List<CourseDto>> getTeacherCourses(
+            @PathVariable String teacherId,
+            @RequestHeader("X-User-Id") String requestingUserId,
+            @RequestHeader("X-User-Role") String requestingUserRole) {
+
+        // If caller is a teacher, they can only see their own courses
+        if ("ROLE_TEACHER".equals(requestingUserRole) && !requestingUserId.equals(teacherId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         List<CourseDto> courses = courseService.getTeacherCourses(teacherId);
         return ResponseEntity.ok(courses);
     }
