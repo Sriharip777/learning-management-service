@@ -57,43 +57,50 @@ public class AvailabilityService {
                                 .getOrDefault(dayOfWeek, new ArrayList<>())
                 );
 
-                // ✅ NEW: if weekly pattern is enabled, add that pattern as a slot
-                if (Boolean.TRUE.equals(teacherAvailability.getWeeklyPatternEnabled())) {
-                    Integer d1 = teacherAvailability.getWeeklyPatternDay1();
-                    Integer d2 = teacherAvailability.getWeeklyPatternDay2();
+                // ✅ Use weeklyPatternDays list instead of day1/day2
+                if (Boolean.TRUE.equals(teacherAvailability.getWeeklyPatternEnabled())
+                        && teacherAvailability.getWeeklyPatternDays() != null
+                        && !teacherAvailability.getWeeklyPatternDays().isEmpty()) {
 
-                    int jsDay = dayOfWeek.getValue() % 7; // JS: 0=Sun, 1=Mon...; Java: 1=Mon..7=Sun
-                    if ((d1 != null && jsDay == d1) || (d2 != null && jsDay == d2)) {
+                    // Convert Java DayOfWeek (1=Mon..7=Sun) to JS style (0=Sun..6=Sat)
+                    int jsDay = dayOfWeek.getValue() % 7;
+
+                    if (teacherAvailability.getWeeklyPatternDays().contains(jsDay)) {
                         TimeSlot patternSlot = TimeSlot.builder()
                                 .startTime(teacherAvailability.getWeeklyPatternStart()) // "HH:mm"
                                 .endTime(teacherAvailability.getWeeklyPatternEnd())
                                 .isAvailable(true)
+                                .mode(null) // or default mode if needed
                                 .build();
                         daySlots.add(patternSlot);
                     }
                 }
 
                 for (TimeSlot slot : daySlots) {
-                    LocalTime slotStartTime = LocalTime.parse(slot.getStartTime());
-                    LocalTime slotEndTime = LocalTime.parse(slot.getEndTime());
-                    LocalDateTime slotStart = LocalDateTime.of(currentDate, slotStartTime);
-                    LocalDateTime slotEnd = LocalDateTime.of(currentDate, slotEndTime);
+                    try {
+                        LocalTime slotStartTime = LocalTime.parse(slot.getStartTime());
+                        LocalTime slotEndTime = LocalTime.parse(slot.getEndTime());
+                        LocalDateTime slotStart = LocalDateTime.of(currentDate, slotStartTime);
+                        LocalDateTime slotEnd = LocalDateTime.of(currentDate, slotEndTime);
 
-                    if (!slotStart.isBefore(start) && !slotEnd.isAfter(end)) {
-                        boolean isBooked = isSlotBooked(teacherId, slotStart, slotEnd);
-                        availabilityList.add(AvailabilityDto.builder()
-                                .startTime(slotStart)
-                                .endTime(slotEnd)
-                                .isAvailable(!isBooked)
-                                .reason(isBooked ? "Session scheduled" : null)
-                                .mode(slot.getMode())
-                                .build());
+                        if (!slotStart.isBefore(start) && !slotEnd.isAfter(end)) {
+                            boolean isBooked = isSlotBooked(teacherId, slotStart, slotEnd);
+                            availabilityList.add(AvailabilityDto.builder()
+                                    .startTime(slotStart)
+                                    .endTime(slotEnd)
+                                    .isAvailable(!isBooked)
+                                    .reason(isBooked ? "Session scheduled" : null)
+                                    .mode(slot.getMode())
+                                    .build());
+                        }
+                    } catch (Exception ex) {
+                        log.error("Failed to process slot {} - {} on {}: {}",
+                                slot.getStartTime(), slot.getEndTime(), currentDate, ex.getMessage());
                     }
                 }
 
                 currentDate = currentDate.plusDays(1);
             }
-
 
             log.info("Generated {} availability slots", availabilityList.size());
 
@@ -129,14 +136,14 @@ public class AvailabilityService {
         var sessions = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
                 teacherId, start, end);
 
-        sessions.forEach(session -> {
-            bookedSlots.add(AvailabilityDto.builder()
-                    .startTime(session.getScheduledStartTime())
-                    .endTime(session.getScheduledEndTime())
-                    .isAvailable(false)
-                    .reason("Session scheduled")
-                    .build());
-        });
+        sessions.forEach(session -> bookedSlots.add(
+                AvailabilityDto.builder()
+                        .startTime(session.getScheduledStartTime())
+                        .endTime(session.getScheduledEndTime())
+                        .isAvailable(false)
+                        .reason("Session scheduled")
+                        .build()
+        ));
 
         return bookedSlots;
     }

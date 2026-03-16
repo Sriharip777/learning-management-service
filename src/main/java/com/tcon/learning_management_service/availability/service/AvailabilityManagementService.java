@@ -20,7 +20,6 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,7 +29,7 @@ public class AvailabilityManagementService {
     private final TeacherAvailabilityRepository availabilityRepository;
     private final DateSpecificAvailabilityRepository dateSpecificRepository;
 
-    // ==================== WEEKLY AVAILABILITY (EXISTING) ====================
+    // ==================== WEEKLY AVAILABILITY ====================
 
     @Transactional
     public TeacherAvailabilityDto setTeacherAvailability(
@@ -41,8 +40,7 @@ public class AvailabilityManagementService {
             Integer maxSessionsPerDay,
             Boolean oneOnOneEnabled,
             Boolean groupEnabled,
-            WeeklyPatternDto weeklyPattern)
-    {
+            WeeklyPatternDto weeklyPattern) {
 
         log.info("Setting availability for teacher: {}", teacherId);
         log.info("Received weekly availability: {}", weeklyAvailability);
@@ -54,8 +52,6 @@ public class AvailabilityManagementService {
                         .dateOverrides(new ArrayList<>())
                         .build());
 
-        // Set isAvailable to true for all slots if not set
-        // ✅ merge incoming weeklyAvailability into existing
         if (weeklyAvailability != null) {
             Map<DayOfWeek, List<TimeSlot>> existing =
                     Optional.ofNullable(availability.getWeeklyAvailability())
@@ -63,9 +59,7 @@ public class AvailabilityManagementService {
 
             weeklyAvailability.forEach((day, incomingSlots) -> {
                 if (incomingSlots == null) return;
-
                 List<TimeSlot> daySlots = existing.getOrDefault(day, new ArrayList<>());
-                // append new slots (you can dedupe by start/end/mode later if needed)
                 daySlots.addAll(incomingSlots);
                 existing.put(day, daySlots);
             });
@@ -76,7 +70,16 @@ public class AvailabilityManagementService {
         availability.setTimezone(timezone != null ? timezone : "UTC");
         availability.setBufferTimeMinutes(bufferTimeMinutes != null ? bufferTimeMinutes : 15);
         availability.setMaxSessionsPerDay(maxSessionsPerDay);
+        availability.setOneOnOneEnabled(oneOnOneEnabled);
+        availability.setGroupEnabled(groupEnabled);
 
+        if (weeklyPattern != null) {
+            availability.setWeeklyPatternEnabled(Boolean.TRUE.equals(weeklyPattern.getEnabled()));
+            availability.setWeeklyPatternDays(
+                    weeklyPattern.getDays() != null ? weeklyPattern.getDays() : new ArrayList<>());
+            availability.setWeeklyPatternStart(weeklyPattern.getTimeStart());
+            availability.setWeeklyPatternEnd(weeklyPattern.getTimeEnd());
+        }
 
         TeacherAvailability saved = availabilityRepository.save(availability);
         log.info("Availability set successfully for teacher: {} with {} days configured",
@@ -96,7 +99,6 @@ public class AvailabilityManagementService {
         List<TimeSlot> daySlots = availability.getWeeklyAvailability()
                 .computeIfAbsent(dayOfWeek, k -> new ArrayList<>());
 
-        // Validate no overlap
         for (TimeSlot existing : daySlots) {
             if (timeSlotsOverlap(existing, timeSlot)) {
                 log.error("Time slot overlaps: new ({} - {}) with existing ({} - {})",
@@ -140,7 +142,6 @@ public class AvailabilityManagementService {
 
         TeacherAvailability saved = availabilityRepository.save(availability);
         log.info("Time slot removed successfully");
-
         return toDto(saved);
     }
 
@@ -163,16 +164,12 @@ public class AvailabilityManagementService {
         log.info("Availability deleted successfully");
     }
 
-    // ==================== DATE-SPECIFIC AVAILABILITY (NEW) ====================
+    // ==================== DATE-SPECIFIC AVAILABILITY ====================
 
-    /**
-     * ✅ Save batch date-specific availability
-     */
     @Transactional
     public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
         log.info("💾 Saving batch date-specific availability for teacher: {}", request.getTeacherId());
 
-        // NEW: persist session flags + weekly pattern on TeacherAvailability
         TeacherAvailability availability = availabilityRepository
                 .findByTeacherId(request.getTeacherId())
                 .orElse(TeacherAvailability.builder()
@@ -187,21 +184,19 @@ public class AvailabilityManagementService {
         if (request.getWeeklyPattern() != null) {
             WeeklyPatternDto p = request.getWeeklyPattern();
             availability.setWeeklyPatternEnabled(Boolean.TRUE.equals(p.getEnabled()));
-            availability.setWeeklyPatternDay1(p.getDay1());
-            availability.setWeeklyPatternDay2(p.getDay2());
+            availability.setWeeklyPatternDays(
+                    p.getDays() != null ? p.getDays() : new ArrayList<>());
             availability.setWeeklyPatternStart(p.getTimeStart());
             availability.setWeeklyPatternEnd(p.getTimeEnd());
         } else {
             availability.setWeeklyPatternEnabled(null);
-            availability.setWeeklyPatternDay1(null);
-            availability.setWeeklyPatternDay2(null);
+            availability.setWeeklyPatternDays(new ArrayList<>());
             availability.setWeeklyPatternStart(null);
             availability.setWeeklyPatternEnd(null);
         }
 
         availabilityRepository.save(availability);
 
-        // existing per-date saving logic
         for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
             LocalDate date = LocalDate.parse(dateDto.getDate());
 
@@ -227,13 +222,6 @@ public class AvailabilityManagementService {
         }
     }
 
-
-
-    /**
-     * ✅ Get all date-specific availability for a teacher
-     */
-    // AvailabilityManagementService.java
-
     public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId, SessionMode mode) {
         log.info("📅 Fetching date-specific availability for teacher: {} with mode: {}", teacherId, mode);
 
@@ -251,12 +239,10 @@ public class AvailabilityManagementService {
 
             List<TimeSlot> filteredSlots;
             if (mode == null) {
-                // no filter → all slots
                 filteredSlots = allSlotsForDate;
             } else {
                 filteredSlots = allSlotsForDate.stream()
                         .filter(slot ->
-                                // decide your rule; for 1:1 maybe include null
                                 (mode == SessionMode.ONE_ON_ONE && slot.getMode() == null) ||
                                         slot.getMode() == mode
                         )
@@ -272,11 +258,6 @@ public class AvailabilityManagementService {
         return result;
     }
 
-
-
-    /**
-     * ✅ Delete date-specific availability
-     */
     @Transactional
     public void deleteDateSpecificAvailability(String teacherId, LocalDate date) {
         log.info("🗑️ Deleting date-specific availability for teacher {} on {}", teacherId, date);
@@ -289,9 +270,9 @@ public class AvailabilityManagementService {
     private boolean timeSlotsOverlap(TimeSlot slot1, TimeSlot slot2) {
         try {
             LocalTime start1 = LocalTime.parse(slot1.getStartTime());
-            LocalTime end1 = LocalTime.parse(slot1.getEndTime());
+            LocalTime end1   = LocalTime.parse(slot1.getEndTime());
             LocalTime start2 = LocalTime.parse(slot2.getStartTime());
-            LocalTime end2 = LocalTime.parse(slot2.getEndTime());
+            LocalTime end2   = LocalTime.parse(slot2.getEndTime());
 
             boolean overlaps = !end1.isBefore(start2) && !start1.isAfter(end2);
 
@@ -317,19 +298,16 @@ public class AvailabilityManagementService {
                 .weeklyAvailability(availability.getWeeklyAvailability())
                 .bufferTimeMinutes(availability.getBufferTimeMinutes())
                 .maxSessionsPerDay(availability.getMaxSessionsPerDay())
-                // NEW
                 .oneOnOneEnabled(availability.getOneOnOneEnabled())
                 .groupEnabled(availability.getGroupEnabled())
                 .weeklyPattern(
                         WeeklyPatternDto.builder()
                                 .enabled(availability.getWeeklyPatternEnabled())
-                                .day1(availability.getWeeklyPatternDay1())
-                                .day2(availability.getWeeklyPatternDay2())
+                                .days(availability.getWeeklyPatternDays())
                                 .timeStart(availability.getWeeklyPatternStart())
                                 .timeEnd(availability.getWeeklyPatternEnd())
                                 .build()
                 )
                 .build();
     }
-
 }

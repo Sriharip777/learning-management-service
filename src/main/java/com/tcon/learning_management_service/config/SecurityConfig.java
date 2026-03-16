@@ -43,13 +43,19 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
 
-                        // ADMIN ONLY - write operations on master data + courses
+
+                        // Courses and grades — ADMIN only
                         .requestMatchers(HttpMethod.POST,
                                 "/api/grades",
-                                "/api/subjects",
-                                "/api/topics",
                                 "/api/courses"
                         ).hasAuthority("ROLE_ADMIN")
+
+                        // Subjects and topics — ADMIN or TEACHER
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/subjects",
+                                "/api/topics"
+                        ).hasAnyAuthority("ROLE_ADMIN", "ROLE_TEACHER")
+
 
                         .requestMatchers(HttpMethod.PUT,
                                 "/api/grades/**",

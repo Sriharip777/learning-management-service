@@ -60,11 +60,13 @@ public class MasterDataController {
     //         SUBJECTS
     // =========================
 
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TEACHER')")
     @PostMapping("/api/subjects")
     public ResponseEntity<SubjectDto> createSubject(@Valid @RequestBody SubjectDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(subjectService.create(dto));
     }
+
+
 
     // Frontend calls this when admin selects a grade to get its subjects
     @GetMapping("/api/grades/{gradeId}/subjects")
@@ -91,7 +93,7 @@ public class MasterDataController {
     //          TOPICS
     // =========================
 
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TEACHER')")
     @PostMapping("/api/topics")
     public ResponseEntity<TopicDto> createTopic(@Valid @RequestBody TopicDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(topicService.create(dto));

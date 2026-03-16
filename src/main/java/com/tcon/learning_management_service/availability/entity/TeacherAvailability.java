@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.availability.entity;
-
-
+import com.tcon.learning_management_service.availability.dto.SessionMode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,26 +31,25 @@ public class TeacherAvailability {
 
     private String timezone;
 
-    // Weekly recurring availability
     @Builder.Default
     private Map<DayOfWeek, List<TimeSlot>> weeklyAvailability = new java.util.HashMap<>();
 
-    // Specific date overrides (for holidays, special events, etc.)
     @Builder.Default
     private List<DateOverride> dateOverrides = new ArrayList<>();
 
-    // Buffer time between sessions (in minutes)
     @Builder.Default
     private Integer bufferTimeMinutes = 15;
 
-    // Maximum sessions per day
     private Integer maxSessionsPerDay;
 
     private Boolean oneOnOneEnabled;
     private Boolean groupEnabled;
 
-    private Integer weeklyPatternDay1;    // 0-6
-    private Integer weeklyPatternDay2;    // 0-6
+    // ✅ CHANGED: multiple days instead of day1/day2 only
+    @Builder.Default
+    private List<Integer> weeklyPatternDays = new ArrayList<>(); // 0=Sun,1=Mon,...6=Sat
+
+    // ✅ KEPT same
     private String weeklyPatternStart;    // "HH:mm"
     private String weeklyPatternEnd;      // "HH:mm"
     private Boolean weeklyPatternEnabled;
