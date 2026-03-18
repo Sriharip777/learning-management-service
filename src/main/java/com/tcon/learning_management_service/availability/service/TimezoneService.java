@@ -29,21 +29,30 @@ public class TimezoneService {
      */
     public List<TimezoneResponseDto> getAllUsaTimezones() {
         return Arrays.stream(UsaTimezone.values())
-                .map(tz -> {
-                    ZoneId zoneId = ZoneId.of(tz.getTimezoneId());
-                    ZonedDateTime now = ZonedDateTime.now(zoneId);
+                .flatMap(tz -> {
+                    try {
+                        ZoneId zoneId = ZoneId.of(tz.getTimezoneId());
+                        ZonedDateTime now = ZonedDateTime.now(zoneId);
 
-                    return TimezoneResponseDto.builder()
-                            .stateName(tz.getStateName())
-                            .stateCode(tz.getStateCode())
-                            .timezoneId(tz.getTimezoneId())
-                            .timezoneLabel(tz.getTimezoneLabel())
-                            .utcOffset(tz.getUtcOffset())
-                            .currentTime(now.format(DISPLAY_FORMATTER))
-                            .build();
+                        TimezoneResponseDto dto = TimezoneResponseDto.builder()
+                                .stateName(tz.getStateName())
+                                .stateCode(tz.getStateCode())
+                                .timezoneId(tz.getTimezoneId())
+                                .timezoneLabel(tz.getTimezoneLabel())
+                                .utcOffset(tz.getUtcOffset())
+                                .currentTime(now.format(DISPLAY_FORMATTER))
+                                .build();
+
+                        return java.util.stream.Stream.of(dto);
+                    } catch (Exception e) {
+                        log.error("Invalid timezoneId '{}' for enum {}: {}",
+                                tz.getTimezoneId(), tz.name(), e.getMessage());
+                        return java.util.stream.Stream.<TimezoneResponseDto>empty();
+                    }
                 })
                 .collect(Collectors.toList());
     }
+
 
     /**
      * Convert a list of TimeSlots to display format in the given timezone

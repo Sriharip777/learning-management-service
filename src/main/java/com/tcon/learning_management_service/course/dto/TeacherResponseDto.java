@@ -1,4 +1,3 @@
-
 package com.tcon.learning_management_service.course.dto;
 
 import lombok.AllArgsConstructor;
@@ -14,6 +13,8 @@ import java.util.List;
 @AllArgsConstructor
 public class TeacherResponseDto {
     private String id;
+    private String firstName;
+    private String lastName;
     private String userId;
     private String bio;
     private List<String> subjects;

@@ -7,13 +7,13 @@ import com.tcon.learning_management_service.course.repository.*;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
 import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
 import com.tcon.learning_management_service.session.service.ClassSessionService;
+import com.tcon.learning_management_service.course.dto.EligibleTeacherRequest;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -570,6 +570,39 @@ public class CourseService {
                 .durationMinutes(ssr.getDurationMinutes())
                 .build();
     }
+
+    public List<TeacherResponseDto> getEligibleTeachersForCourse(String courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        EligibleTeacherRequest req = EligibleTeacherRequest.builder()
+                .gradeId(course.getGradeId())
+                .subjectId(course.getSubjectId())
+                .topicIds(course.getTopicIds())
+                .build();
+
+        return userServiceClient.getEligibleTeachersForCourse(req);
+    }
+
+    @Transactional
+    public CourseDto assignTeacherToCourse(String courseId, String teacherUserId, String adminId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        course.setTeacherId(teacherUserId);
+        course.setUpdatedBy(adminId);
+        course.setUpdatedAt(LocalDateTime.now());
+
+        Course saved = courseRepository.save(course);
+
+        Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
+        Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
+        List<Topic> topics = course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of();
+
+        return toDtoWithMasterData(saved, grade, subject, topics);
+    }
+
+
 
     // =========================
     //       UTIL HELPERS

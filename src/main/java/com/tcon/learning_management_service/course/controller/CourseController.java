@@ -1,8 +1,6 @@
 package com.tcon.learning_management_service.course.controller;
-import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
-import com.tcon.learning_management_service.course.dto.CourseDto;
-import com.tcon.learning_management_service.course.dto.CourseSearchDto;
-import com.tcon.learning_management_service.course.dto.CourseUpdateRequest;
+import com.tcon.learning_management_service.course.dto.*;
+import com.tcon.learning_management_service.course.dto.EligibleTeacherRequest;
 import com.tcon.learning_management_service.course.entity.CourseEnrollment;
 import com.tcon.learning_management_service.course.service.CourseEnrollmentService;
 import com.tcon.learning_management_service.course.service.CourseSearchService;
@@ -207,4 +205,38 @@ public class CourseController {
         List<String> studentIds = courseService.getStudentsForTeacher(teacherId);
         return ResponseEntity.ok(studentIds);
     }
+
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/admin/{courseId}/eligible-teachers")
+    public List<TeacherResponseDto> getEligibleTeachers(@PathVariable String courseId) {
+        return courseService.getEligibleTeachersForCourse(courseId);
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PostMapping("/admin/{courseId}/assign-teacher/{teacherUserId}")
+    public CourseDto assignTeacher(
+            @PathVariable String courseId,
+            @PathVariable String teacherUserId,
+            @RequestHeader("X-User-Id") String adminId
+    ) {
+        return courseService.assignTeacherToCourse(courseId, teacherUserId, adminId);
+    }
+
+    @GetMapping("/{courseId}/available-teachers")
+    public ResponseEntity<List<AvailableTeacherDto>> getAvailableTeachersForCourse(
+            @PathVariable String courseId
+    ) {
+        log.info("📥 GET /api/courses/{}/available-teachers", courseId);
+        try {
+            List<AvailableTeacherDto> teachers =
+                    courseService.getAvailableTeachersForCourse(courseId);
+            log.info("✅ Found {} available teacher(s) for course {}", teachers.size(), courseId);
+            return ResponseEntity.ok(teachers);
+        } catch (Exception e) {
+            log.error("❌ Error fetching available teachers for course {}", courseId, e);
+            // Return empty list instead of 500 so student UI still works
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
 }
