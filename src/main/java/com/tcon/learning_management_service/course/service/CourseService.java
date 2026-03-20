@@ -420,14 +420,28 @@ public class CourseService {
         enrichWithTeacherInfo(dto, course.getTeacherId());
         return dto;
     }
-
     private void enrichWithTeacherInfo(CourseDto courseDto, String teacherUserId) {
         if (teacherUserId == null) return;
 
         try {
-            log.debug("Fetching teacher profile for userId: {}", teacherUserId);
-            TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
+            // ✅ STEP 1: Get user details directly (always works if user exists)
+            UserResponseDto user = userServiceClient.getUserById(teacherUserId);
+            if (user != null) {
+                // Build name from firstName + lastName since auth returns those
+                String name = buildDisplayName(user);
+                courseDto.setTeacherName(name);
+                courseDto.setTeacherEmail(user.getEmail());
+                courseDto.setTeacherProfilePicture(user.getProfilePicture());
+                log.debug("✅ Teacher name resolved: {}", name);
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch user for teacherUserId {}: {}", teacherUserId, e.getMessage());
+            courseDto.setTeacherName("Expert Instructor");
+        }
 
+        try {
+            // ✅ STEP 2: Get teacher profile (non-blocking, optional)
+            TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
             if (teacher != null) {
                 courseDto.setTeacherBio(teacher.getBio());
                 courseDto.setTeacherSubjects(teacher.getSubjects());
@@ -441,31 +455,20 @@ public class CourseService {
                 courseDto.setTeacherTimezone(teacher.getTimezone());
                 courseDto.setTeacherIsAvailable(teacher.getIsAvailable());
                 courseDto.setTeacherVerificationStatus(teacher.getVerificationStatus());
-
-                if (teacher.getUserId() != null) {
-                    UserResponseDto user = userServiceClient.getUserById(teacher.getUserId());
-                    if (user != null) {
-                        courseDto.setTeacherName(user.getName());
-                        courseDto.setTeacherEmail(user.getEmail());
-                        courseDto.setTeacherProfilePicture(user.getProfilePicture());
-                    }
-                }
-
-                Integer totalStudents = calculateTeacherTotalStudents(teacherUserId);
-                courseDto.setTeacherTotalStudents(totalStudents);
             }
-        } catch (FeignException.BadRequest e) {
-            // 400 from auth-user-service: no teacher profile -> treat as generic instructor
-            log.warn("Teacher profile not found for userId {}: {}", teacherUserId, e.getMessage());
-            courseDto.setTeacherName("Expert Instructor");
-        } catch (FeignException.NotFound e) {
-            log.warn("Teacher profile not found (404) for userId {}: {}", teacherUserId, e.getMessage());
-            courseDto.setTeacherName("Expert Instructor");
         } catch (Exception e) {
-            log.error("Error fetching teacher information for userId: {}", teacherUserId, e);
-            courseDto.setTeacherName("Expert Instructor");
+            // Non-blocking — teacher profile missing is OK, name is already set
+            log.warn("Teacher profile not found for userId {}: {}", teacherUserId, e.getMessage());
+        }
+
+        try {
+            Integer totalStudents = calculateTeacherTotalStudents(teacherUserId);
+            courseDto.setTeacherTotalStudents(totalStudents);
+        } catch (Exception e) {
+            log.warn("Could not calculate total students for {}", teacherUserId);
         }
     }
+
 
 
     private Integer calculateTeacherTotalStudents(String teacherUserId) {
@@ -480,6 +483,7 @@ public class CourseService {
             return 0;
         }
     }
+
     public List<AvailableTeacherDto> getAvailableTeachersForCourse(String courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
@@ -489,60 +493,52 @@ public class CourseService {
             return List.of();
         }
 
+        String displayName = "Expert Instructor";
+        String avatar = null;
+        Double hourlyRate = course.getPricePerSession() != null
+                ? course.getPricePerSession().doubleValue() : null;
+        Double rating = null;
+        List<String> subjects = null;
+
+        // ✅ STEP 1: Get user name directly (always works if user exists)
+        try {
+            UserResponseDto user = userServiceClient.getUserById(teacherUserId);
+            if (user != null) {
+                String name = buildDisplayName(user);
+                if (name != null && !name.isBlank()) {
+                    displayName = name;
+                }
+                avatar = user.getProfilePicture();
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch user for teacherUserId {}: {}", teacherUserId, e.getMessage());
+        }
+
+        // ✅ STEP 2: Get teacher profile (optional - for rate, rating, subjects)
         try {
             TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
-
-            Double hourlyRate = teacher != null && teacher.getHourlyRate() != null
-                    ? teacher.getHourlyRate()
-                    : (course.getPricePerSession() != null ? course.getPricePerSession().doubleValue() : null);
-
-            Double rating = teacher != null ? teacher.getAverageRating() : null;
-
-            UserResponseDto user = null;
-            if (teacher != null && teacher.getUserId() != null) {
-                user = userServiceClient.getUserById(teacher.getUserId());
+            if (teacher != null) {
+                if (teacher.getHourlyRate() != null) hourlyRate = teacher.getHourlyRate();
+                rating = teacher.getAverageRating();
+                subjects = teacher.getSubjects();
             }
-
-            String displayName = user != null && user.getName() != null ? user.getName() : "Expert Instructor";
-            String avatar = user != null ? user.getProfilePicture() : null;
-
-            return List.of(
-                    AvailableTeacherDto.builder()
-                            .id(teacherUserId)
-                            .name(displayName)
-                            .avatar(avatar)
-                            .hourlyRate(hourlyRate)
-                            .currency(course.getCurrency())
-                            .rating(rating)
-                            .subjects(teacher != null ? teacher.getSubjects() : null)
-                            .build()
-            );
-        } catch (FeignException.BadRequest | FeignException.NotFound e) {
-            log.warn("Teacher profile missing for userId {}, falling back: {}", teacherUserId, e.getMessage());
-            return List.of(
-                    AvailableTeacherDto.builder()
-                            .id(teacherUserId)
-                            .name("Expert Instructor")
-                            .hourlyRate(course.getPricePerSession() != null
-                                    ? course.getPricePerSession().doubleValue()
-                                    : null)
-                            .currency(course.getCurrency())
-                            .build()
-            );
         } catch (Exception e) {
-            log.error("Error calling user-service for teacher {}", teacherUserId, e);
-            return List.of(
-                    AvailableTeacherDto.builder()
-                            .id(teacherUserId)
-                            .name("Expert Instructor")
-                            .hourlyRate(course.getPricePerSession() != null
-                                    ? course.getPricePerSession().doubleValue()
-                                    : null)
-                            .currency(course.getCurrency())
-                            .build()
-            );
+            log.warn("Teacher profile not found for userId {}: {}", teacherUserId, e.getMessage());
         }
+
+        return List.of(
+                AvailableTeacherDto.builder()
+                        .id(teacherUserId)
+                        .name(displayName)
+                        .avatar(avatar)
+                        .hourlyRate(hourlyRate)
+                        .currency(course.getCurrency())
+                        .rating(rating)
+                        .subjects(subjects)
+                        .build()
+        );
     }
+
 
 
     // =========================
@@ -586,6 +582,9 @@ public class CourseService {
 
     @Transactional
     public CourseDto assignTeacherToCourse(String courseId, String teacherUserId, String adminId) {
+        log.info("Admin {} assigning teacherUserId: {} to courseId: {}",
+                adminId, teacherUserId, courseId);
+
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
@@ -594,13 +593,36 @@ public class CourseService {
         course.setUpdatedAt(LocalDateTime.now());
 
         Course saved = courseRepository.save(course);
+        log.info("✅ Course {} now has teacherId: {}", courseId, saved.getTeacherId());
 
-        Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
-        Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
-        List<Topic> topics = course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of();
+        Grade grade = course.getGradeId() != null
+                ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
+        Subject subject = course.getSubjectId() != null
+                ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
+        List<Topic> topics = course.getTopicIds() != null
+                ? topicRepository.findAllById(course.getTopicIds()) : List.of();
 
         return toDtoWithMasterData(saved, grade, subject, topics);
     }
+
+    private String buildDisplayName(UserResponseDto user) {
+        if (user == null) return "Expert Instructor";
+
+        String firstName = user.getFirstName();
+        String lastName = user.getLastName();
+
+        if (firstName != null && lastName != null) {
+            return (firstName + " " + lastName).trim();
+        }
+        if (firstName != null) return firstName;
+        if (lastName != null) return lastName;
+        if (user.getName() != null && !user.getName().isBlank()) return user.getName();
+        if (user.getEmail() != null) return user.getEmail().split("@")[0];
+
+        return "Expert Instructor";
+    }
+
+
 
 
 

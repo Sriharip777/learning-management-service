@@ -6,6 +6,9 @@ import com.tcon.learning_management_service.course.dto.TopicDto;
 import com.tcon.learning_management_service.course.service.GradeService;
 import com.tcon.learning_management_service.course.service.SubjectService;
 import com.tcon.learning_management_service.course.service.TopicService;
+import com.tcon.learning_management_service.course.service.CurriculumImportService;
+import com.tcon.learning_management_service.course.service.CurriculumImportService.ImportResult;
+import org.springframework.web.multipart.MultipartFile;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +28,7 @@ public class MasterDataController {
     private final GradeService gradeService;
     private final SubjectService subjectService;
     private final TopicService topicService;
+    private final CurriculumImportService curriculumImportService;
 
     // =========================
     //          GRADES
@@ -118,5 +122,12 @@ public class MasterDataController {
     public ResponseEntity<Map<String, String>> deleteTopic(@PathVariable String id) {
         topicService.delete(id);
         return ResponseEntity.ok(Map.of("message", "Topic deleted successfully"));
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PostMapping("/api/curriculum/import")
+    public ResponseEntity<ImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
+        ImportResult result = curriculumImportService.importFromExcel(file);
+        return ResponseEntity.ok(result);
     }
 }

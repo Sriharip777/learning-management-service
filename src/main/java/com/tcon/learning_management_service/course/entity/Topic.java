@@ -16,4 +16,5 @@ public class Topic {
     private String name;        // "Linear Equations", "Quadratic Equations"
     private String description;
     private Boolean isActive;
+    private Integer durationMinutes;
 }

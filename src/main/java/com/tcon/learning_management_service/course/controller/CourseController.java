@@ -103,16 +103,25 @@ public class CourseController {
     public ResponseEntity<List<CourseDto>> getTeacherCourses(
             @PathVariable String teacherId,
             @RequestHeader("X-User-Id") String requestingUserId,
-            @RequestHeader("X-User-Role") String requestingUserRole) {
+            @RequestHeader(value = "X-User-Role", required = false,
+                    defaultValue = "ROLE_TEACHER") String requestingUserRole) {
 
-        // If caller is a teacher, they can only see their own courses
-        if ("ROLE_TEACHER".equals(requestingUserRole) && !requestingUserId.equals(teacherId)) {
+        log.info("Fetching courses for teacherId: {}, requestedBy: {}, role: {}",
+                teacherId, requestingUserId, requestingUserRole);
+
+        boolean isTeacher = "ROLE_TEACHER".equals(requestingUserRole)
+                || "TEACHER".equals(requestingUserRole);
+
+        if (isTeacher && !requestingUserId.equals(teacherId)) {
+            log.warn("Teacher {} tried to access courses of teacher {}", requestingUserId, teacherId);
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         List<CourseDto> courses = courseService.getTeacherCourses(teacherId);
+        log.info("Found {} courses for teacherId: {}", courses.size(), teacherId);
         return ResponseEntity.ok(courses);
     }
+
 
     // =========================
     //      PUBLIC / GENERAL

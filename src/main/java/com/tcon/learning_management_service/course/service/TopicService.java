@@ -25,6 +25,7 @@ public class TopicService {
                 .name(dto.getName())
                 .description(dto.getDescription())
                 .isActive(true)
+                .durationMinutes(dto.getDurationMinutes())
                 .build();
         return toDto(topicRepository.save(topic));
     }
@@ -40,6 +41,7 @@ public class TopicService {
         if (dto.getName() != null) topic.setName(dto.getName());
         if (dto.getDescription() != null) topic.setDescription(dto.getDescription());
         if (dto.getIsActive() != null) topic.setIsActive(dto.getIsActive());
+        if (dto.getDurationMinutes() != null) topic.setDurationMinutes(dto.getDurationMinutes());
         return toDto(topicRepository.save(topic));
     }
 
@@ -57,6 +59,7 @@ public class TopicService {
                 .name(t.getName())
                 .description(t.getDescription())
                 .isActive(t.getIsActive())
+                .durationMinutes(t.getDurationMinutes())
                 .build();
     }
 }

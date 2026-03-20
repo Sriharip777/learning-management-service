@@ -15,4 +15,5 @@ public class TopicDto {
     private String name;
     private String description;
     private Boolean isActive;
+    private Integer durationMinutes;
 }

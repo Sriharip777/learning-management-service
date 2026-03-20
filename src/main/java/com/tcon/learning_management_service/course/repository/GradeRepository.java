@@ -9,4 +9,9 @@ import java.util.List;
 public interface GradeRepository extends MongoRepository<Grade, String> {
     List<Grade> findByIsActiveTrueOrderByOrderAsc();
     boolean existsByName(String name);
+
+    // New helpers for import (case-insensitive name matching)
+    boolean existsByNameIgnoreCase(String name);
+
+    Grade findByNameIgnoreCase(String name);
 }

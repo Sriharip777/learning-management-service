@@ -74,15 +74,19 @@ public class GlobalExceptionHandler {
 
         log.error("❌ Illegal argument: {}", ex.getMessage());
 
+        String msg = ex.getMessage() != null ? ex.getMessage() : "Bad request";
+        boolean isNotFound = msg.toLowerCase().contains("not found");
+        HttpStatus status = isNotFound ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+
         ErrorResponse error = ErrorResponse.builder()
-                .status(HttpStatus.BAD_REQUEST.value())
-                .message(ex.getMessage())
-                .error("Bad Request")
+                .status(status.value())
+                .message(msg)
+                .error(isNotFound ? "Not Found" : "Bad Request")
                 .timestamp(LocalDateTime.now())
                 .path(request.getDescription(false).replace("uri=", ""))
                 .build();
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        return ResponseEntity.status(status).body(error);
     }
 
     // ==================== RESOURCE NOT FOUND ====================
