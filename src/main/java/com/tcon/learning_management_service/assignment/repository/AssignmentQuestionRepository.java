@@ -5,7 +5,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.List;
 
-public interface QuestionRepository
+public interface AssignmentQuestionRepository
         extends MongoRepository<Question, String> {
 
     List<Question> findByTeacherId(String teacherId);  // ✅ REQUIRED

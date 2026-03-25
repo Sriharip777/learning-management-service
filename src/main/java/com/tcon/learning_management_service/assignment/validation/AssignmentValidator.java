@@ -3,7 +3,7 @@ package com.tcon.learning_management_service.assignment.validation;
 import com.tcon.learning_management_service.assignment.dto.AssignmentCreateRequest;
 import com.tcon.learning_management_service.assignment.dto.AssignStudentsRequest;
 import com.tcon.learning_management_service.assignment.entity.Question;
-import com.tcon.learning_management_service.assignment.repository.QuestionRepository;
+import com.tcon.learning_management_service.assignment.repository.AssignmentQuestionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AssignmentValidator {
 
-    private final QuestionRepository questionRepository;
+    private final AssignmentQuestionRepository questionRepository;
 
     /**
      * Validate assignment creation request

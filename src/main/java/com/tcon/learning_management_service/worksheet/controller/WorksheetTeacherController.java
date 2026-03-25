@@ -22,11 +22,13 @@ public class WorksheetTeacherController {
     @GetMapping
     public List<WorksheetSummaryResponse> getWorksheets(
             @RequestParam String subjectId,
-            @RequestParam String gradeId
+            @RequestParam String gradeId,
+            @RequestParam(required = false) String topicId   // ✅ ADD THIS
     ) {
         return queryService.getPublishedWorksheets(
                 subjectId,
-                gradeId
+                gradeId,
+                topicId
         );
     }
 

@@ -5,7 +5,7 @@ import com.tcon.learning_management_service.assignment.entity.Answer;
 import com.tcon.learning_management_service.assignment.entity.Assignment;
 import com.tcon.learning_management_service.assignment.entity.Question;
 import com.tcon.learning_management_service.assignment.repository.AssignmentRepository;
-import com.tcon.learning_management_service.assignment.repository.QuestionRepository;
+import com.tcon.learning_management_service.assignment.repository.AssignmentQuestionRepository;
 import com.tcon.learning_management_service.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EvaluationService {
 
-    private final QuestionRepository questionRepository;
+    private final AssignmentQuestionRepository questionRepository;
     private final AssignmentRepository assignmentRepository;
 
     public List<Answer> evaluate(SubmissionRequest request) {

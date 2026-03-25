@@ -26,19 +26,23 @@ public class WorksheetQueryService {
 
     /*
      * ======================================
-     * TEACHER VIEW
+     * TEACHER VIEW (GRADE + SUBJECT + TOPIC)
      * ======================================
      */
 
     public List<WorksheetSummaryResponse> getPublishedWorksheets(
             String subjectId,
-            String gradeId
+            String gradeId,
+            String topicId
     ) {
 
         return worksheetRepository
                 .findBySubjectIdAndGradeId(subjectId, gradeId)
                 .stream()
-                .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
+                .filter(w ->
+                        w.getStatus() == WorksheetStatus.PUBLISHED &&
+                                (topicId == null || topicId.equals(w.getTopicId()))
+                )
                 .map(mapper::toSummary)
                 .collect(Collectors.toList());
     }
@@ -73,5 +77,44 @@ public class WorksheetQueryService {
                 worksheet,
                 version
         );
+    }
+
+    /*
+     * ======================================
+     * FILTERED WORKSHEETS DETAILS (GRADE + SUBJECT + TOPIC)
+     * ======================================
+     */
+
+    public List<WorksheetDetailResponse> getPublishedWorksheetDetails(
+            String gradeId,
+            String subjectId,
+            String topicId
+    ) {
+
+        List<Worksheet> worksheets =
+                worksheetRepository
+                        .findBySubjectIdAndGradeId(subjectId, gradeId)
+                        .stream()
+                        .filter(w ->
+                                w.getStatus() == WorksheetStatus.PUBLISHED &&
+                                        (topicId == null || topicId.equals(w.getTopicId()))
+                        )
+                        .collect(Collectors.toList());
+
+        return worksheets.stream()
+                .map(w -> {
+                    WorksheetVersion version =
+                            versionRepository
+                                    .findByWorksheetIdAndVersionNumber(
+                                            w.getId(),
+                                            w.getCurrentVersion()
+                                    )
+                                    .orElse(null);
+
+                    validator.validateVersionExists(version);
+
+                    return mapper.toDetailResponse(w, version);
+                })
+                .collect(Collectors.toList());
     }
 }

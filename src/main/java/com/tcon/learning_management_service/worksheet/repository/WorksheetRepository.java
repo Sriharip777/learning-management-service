@@ -14,4 +14,11 @@ public interface WorksheetRepository extends MongoRepository<Worksheet, String> 
             String subjectId,
             String gradeId
     );
+
+    List<Worksheet> findByGradeIdAndSubjectIdAndTopicIdAndStatus(
+            String gradeId,
+            String subjectId,
+            String topicId,
+            WorksheetStatus status
+    );
 }

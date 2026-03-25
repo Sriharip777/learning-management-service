@@ -2,7 +2,7 @@ package com.tcon.learning_management_service.assignment.service;
 
 import com.tcon.learning_management_service.assignment.dto.QuestionCreateRequest;
 import com.tcon.learning_management_service.assignment.entity.Question;
-import com.tcon.learning_management_service.assignment.repository.QuestionRepository;
+import com.tcon.learning_management_service.assignment.repository.AssignmentQuestionRepository;
 import com.tcon.learning_management_service.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,7 +13,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class QuestionService {
 
-    private final QuestionRepository questionRepository;
+    private final AssignmentQuestionRepository questionRepository;
 
     /**
      * Teacher creates question (independent of assignment)
