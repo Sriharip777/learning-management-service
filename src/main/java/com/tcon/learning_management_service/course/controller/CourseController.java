@@ -221,6 +221,16 @@ public class CourseController {
         return courseService.getEligibleTeachersForCourse(courseId);
     }
 
+    // Eligible teachers for a course — for students/parents/teachers/admin
+    @PreAuthorize("hasAnyAuthority('ROLE_STUDENT','ROLE_PARENT','ROLE_TEACHER','ROLE_ADMIN')")
+    @GetMapping("/{courseId}/eligible-teachers")
+    public List<TeacherResponseDto> getEligibleTeachersForUsers(
+            @PathVariable String courseId
+    ) {
+        return courseService.getEligibleTeachersForCourse(courseId);
+    }
+
+
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping("/admin/{courseId}/assign-teacher/{teacherUserId}")
     public CourseDto assignTeacher(
@@ -247,5 +257,24 @@ public class CourseController {
             return ResponseEntity.ok(List.of());
         }
     }
+
+    @GetMapping("/{courseId}/assigned-teachers")
+    public ResponseEntity<List<AssignedTeacherDto>> getAssignedTeachersForCourse(
+            @PathVariable String courseId
+    ) {
+        List<AssignedTeacherDto> teachers = courseService.getAssignedTeachersForCourse(courseId);
+        return ResponseEntity.ok(teachers);
+    }
+
+    @DeleteMapping("/{courseId}/assign-teacher/{teacherUserId}")
+    public CourseDto unassignTeacher(
+            @PathVariable String courseId,
+            @PathVariable String teacherUserId,
+            @RequestHeader("X-User-Id") String adminId
+    ) {
+        return courseService.unassignTeacherFromCourse(courseId, teacherUserId, adminId);
+    }
+
+
 
 }

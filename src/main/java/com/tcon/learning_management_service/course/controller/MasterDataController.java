@@ -124,10 +124,4 @@ public class MasterDataController {
         return ResponseEntity.ok(Map.of("message", "Topic deleted successfully"));
     }
 
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    @PostMapping("/api/curriculum/import")
-    public ResponseEntity<ImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
-        ImportResult result = curriculumImportService.importFromExcel(file);
-        return ResponseEntity.ok(result);
-    }
 }

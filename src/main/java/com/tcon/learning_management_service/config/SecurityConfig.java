@@ -43,6 +43,12 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
 
+                        // ✅ Curriculum import – ADMIN or TEACHER
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/curriculum/import"
+                        ).hasAnyAuthority("ROLE_ADMIN", "ROLE_TEACHER")
+
+
 
                         // Courses and grades — ADMIN only
                         .requestMatchers(HttpMethod.POST,

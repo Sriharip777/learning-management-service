@@ -28,7 +28,9 @@ public class Course {
 
     // Keep if you still map a teacher for that course
     @Indexed
+
     private String teacherId;
+    private List<String> teacherIds;
 
     private String title;
     private String description;
