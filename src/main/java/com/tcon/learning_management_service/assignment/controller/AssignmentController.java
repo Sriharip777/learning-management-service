@@ -60,10 +60,14 @@ public class AssignmentController {
     }
 
     /**
-     * Parent can view their child's assignment results
+     * ✅ UPDATED: Parent can view their child's assignment results (SECURED)
      */
     @GetMapping("/parent/student/{studentId}/results")
-    public List<Submission> getStudentResultsForParent(@PathVariable String studentId) {
-        return submissionService.getResultsByStudent(studentId);
+    public List<Submission> getStudentResultsForParent(
+            @PathVariable String studentId,
+            @RequestHeader("X-User-Id") String parentId,
+            @RequestHeader("X-User-Role") String role) {
+
+        return submissionService.getResultsForParent(parentId, studentId, role);
     }
 }

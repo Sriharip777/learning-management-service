@@ -192,10 +192,40 @@ public class SubmissionService {
     }
 
     /**
-     * Parent view results for a student
+     * ✅ Parent view results (FIXED)
+     */
+    public List<Submission> getResultsForParent(String parentId, String studentId, String role) {
+
+        if (!"PARENT".equals(role)) {
+            throw new RuntimeException("Access denied: Only parents can access this endpoint");
+        }
+
+        List<String> childrenIds = getChildrenIds(parentId);
+
+        if (!childrenIds.contains(studentId)) {
+            throw new RuntimeException("You are not allowed to view this student's results");
+        }
+
+        return submissionRepository.findByStudentId(studentId);
+    }
+
+    /**
+     * 🔥 Helper method (temporary mapping)
+     */
+    private List<String> getChildrenIds(String parentId) {
+
+        // TEMP LOGIC - replace later with DB/API call
+        if ("parent123".equals(parentId)) {
+            return List.of("student1", "student2");
+        }
+
+        return List.of();
+    }
+
+    /**
+     * (OLD - keep if student uses it)
      */
     public List<Submission> getResultsByStudent(String studentId) {
-
         return submissionRepository.findByStudentId(studentId);
     }
 }
