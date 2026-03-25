@@ -31,6 +31,11 @@ public class AssignmentController {
         return assignmentService.assignStudents(assignmentId, request);
     }
 
+    @GetMapping("/{assignmentId}")
+    public Assignment getAssignment(@PathVariable String assignmentId) {
+        return assignmentService.getAssignment(assignmentId);
+    }
+
     @PostMapping("/{assignmentId}/start")
     public Submission startAssignment(@PathVariable String assignmentId,
                                       @RequestBody StartAssignmentRequest request) {
