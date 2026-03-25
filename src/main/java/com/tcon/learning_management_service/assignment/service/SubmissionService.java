@@ -27,9 +27,6 @@ public class SubmissionService {
     private final AssignmentRepository assignmentRepository;
     private final AssignmentEventPublisher eventPublisher;
 
-    /**
-     * Student starts assignment
-     */
     public Submission startAssignment(String assignmentId, String studentId) {
 
         assignmentRepository.findById(assignmentId)
@@ -52,9 +49,6 @@ public class SubmissionService {
         return submissionRepository.save(submission);
     }
 
-    /**
-     * Track student activity (heartbeat)
-     */
     public void trackActivity(String assignmentId, String studentId) {
 
         Submission submission = submissionRepository
@@ -63,13 +57,9 @@ public class SubmissionService {
                         new ResourceNotFoundException("Submission not found"));
 
         submission.setEndTime(LocalDateTime.now());
-
         submissionRepository.save(submission);
     }
 
-    /**
-     * Student submits assignment
-     */
     public Submission submitAssignment(SubmissionRequest request) {
 
         assignmentRepository.findById(request.getAssignmentId())
@@ -87,15 +77,10 @@ public class SubmissionService {
         List<Answer> answers = evaluationService.evaluate(request);
         submission.setAnswers(answers);
 
-        int score = answers.stream()
-                .mapToInt(Answer::getMarks)
-                .sum();
-
+        int score = answers.stream().mapToInt(Answer::getMarks).sum();
         submission.setScore(score);
 
-        int totalMarks =
-                evaluationService.getTotalMarks(request.getAssignmentId());
-
+        int totalMarks = evaluationService.getTotalMarks(request.getAssignmentId());
         submission.setTotalMarks(totalMarks);
 
         LocalDateTime startTime = submission.getStartTime();
@@ -104,58 +89,12 @@ public class SubmissionService {
         submission.setEndTime(endTime);
 
         Duration duration = Duration.between(startTime, endTime);
-
         long totalSeconds = Math.max(duration.getSeconds(), 0);
 
-        long days = totalSeconds / (24 * 3600);
-        long hours = (totalSeconds % (24 * 3600)) / 3600;
-        long minutes = (totalSeconds % 3600) / 60;
-        long seconds = totalSeconds % 60;
-
-        submission.setTimeTakenDays(days);
-        submission.setTimeTakenHours(hours);
-        submission.setTimeTakenMinutes(minutes);
-        submission.setTimeTakenSeconds(seconds);
-
-        if (request.getQuestionAttempts() != null) {
-
-            List<QuestionAttemptRequest> attempts = request.getQuestionAttempts();
-
-            List<QuestionAttempt> questionAttempts = attempts.stream()
-                    .map(a -> {
-                        QuestionAttempt qa = new QuestionAttempt();
-                        qa.setQuestionId(a.getQuestionId());
-                        qa.setSelectedAnswer(a.getSelectedAnswer());
-                        qa.setAttempted(a.isAttempted());
-                        qa.setMarkedForReview(a.isMarkedForReview());
-                        qa.setFlagged(a.isFlagged());
-                        qa.setCorrect(a.isCorrect());
-                        return qa;
-                    })
-                    .collect(Collectors.toList());
-
-            submission.setQuestionAttempts(questionAttempts);
-
-            int attempted = (int) attempts.stream()
-                    .filter(QuestionAttemptRequest::isAttempted)
-                    .count();
-
-            int review = (int) attempts.stream()
-                    .filter(QuestionAttemptRequest::isMarkedForReview)
-                    .count();
-
-            int flagged = (int) attempts.stream()
-                    .filter(QuestionAttemptRequest::isFlagged)
-                    .count();
-
-            int totalQuestions = attempts.size();
-            int remaining = totalQuestions - attempted;
-
-            submission.setAttemptedQuestions(attempted);
-            submission.setRemainingQuestions(remaining);
-            submission.setMarkedForReview(review);
-            submission.setFlaggedQuestions(flagged);
-        }
+        submission.setTimeTakenDays(totalSeconds / (24 * 3600));
+        submission.setTimeTakenHours((totalSeconds % (24 * 3600)) / 3600);
+        submission.setTimeTakenMinutes((totalSeconds % 3600) / 60);
+        submission.setTimeTakenSeconds(totalSeconds % 60);
 
         submission.setStatus("EVALUATED");
 
@@ -167,9 +106,6 @@ public class SubmissionService {
         return savedSubmission;
     }
 
-    /**
-     * Student view own submission
-     */
     public Submission getSubmission(String assignmentId, String studentId) {
 
         return submissionRepository
@@ -178,9 +114,6 @@ public class SubmissionService {
                         new ResourceNotFoundException("Submission not found"));
     }
 
-    /**
-     * Teacher view results
-     */
     public List<Submission> getResults(String assignmentId) {
 
         assignmentRepository.findById(assignmentId)
@@ -191,40 +124,30 @@ public class SubmissionService {
         return submissionRepository.findByAssignmentId(assignmentId);
     }
 
-    /**
-     * ✅ Parent view results (FIXED)
-     */
     public List<Submission> getResultsForParent(String parentId, String studentId, String role) {
 
         if (!"PARENT".equals(role)) {
-            throw new RuntimeException("Access denied: Only parents can access this endpoint");
+            throw new RuntimeException("Access denied");
         }
 
         List<String> childrenIds = getChildrenIds(parentId);
 
         if (!childrenIds.contains(studentId)) {
-            throw new RuntimeException("You are not allowed to view this student's results");
+            throw new RuntimeException("Not allowed");
         }
 
         return submissionRepository.findByStudentId(studentId);
     }
 
-    /**
-     * 🔥 Helper method (temporary mapping)
-     */
     private List<String> getChildrenIds(String parentId) {
 
-        // TEMP LOGIC - replace later with DB/API call
-        if ("parent123".equals(parentId)) {
-            return List.of("student1", "student2");
-        }
-
-        return List.of();
+        return submissionRepository.findAll()
+                .stream()
+                .map(Submission::getStudentId)
+                .distinct()
+                .toList();
     }
 
-    /**
-     * (OLD - keep if student uses it)
-     */
     public List<Submission> getResultsByStudent(String studentId) {
         return submissionRepository.findByStudentId(studentId);
     }
