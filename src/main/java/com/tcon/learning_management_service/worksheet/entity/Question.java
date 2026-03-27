@@ -15,13 +15,13 @@ public class Question {
     @Id
     private String id;
 
-    private String worksheetId;
+    private String questionMasterId;   // ✅ ADD
+    private String questionVersionId;  // ✅ ADD
 
     private String questionText;
 
     private List<String> options;
 
-    // 0=A,1=B,2=C,3=D
     private Integer correctAnswerIndex;
 
     private String reason;

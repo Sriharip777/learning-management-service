@@ -10,6 +10,6 @@ public class SubmitWorksheetRequest {
     private String worksheetId;
     private String studentId;
 
-    // questionId (String) -> selected option index (0-3)
-    private Map<String, Integer> answers;
+    // questionId -> selected option (safe for shuffle)
+    private Map<String, String> answers;
 }

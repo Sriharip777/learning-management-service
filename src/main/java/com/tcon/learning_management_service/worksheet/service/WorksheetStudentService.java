@@ -1,7 +1,7 @@
 package com.tcon.learning_management_service.worksheet.service;
 
 import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorksheetRequest;
-import com.tcon.learning_management_service.worksheet.dto.response.QuestionResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.StudentQuestionResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
 import com.tcon.learning_management_service.worksheet.entity.Question;
 import com.tcon.learning_management_service.worksheet.entity.Worksheet;
@@ -20,7 +20,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class WorksheetAttemptService {
+public class WorksheetStudentService {
 
     private final QuestionRepository questionRepository;
     private final WorksheetRepository worksheetRepository;
@@ -31,9 +31,9 @@ public class WorksheetAttemptService {
      * GET QUESTIONS (SHUFFLED)
      * =====================================
      */
-    public List<QuestionResponse> getShuffledQuestions(String worksheetId) {
+    public List<StudentQuestionResponse> getShuffledQuestions(String worksheetId) {
 
-        log.info("Fetching shuffled questions for worksheet={}", worksheetId);
+        log.info("Fetching questions for worksheet={}", worksheetId);
 
         Worksheet worksheet = worksheetRepository.findById(worksheetId)
                 .orElseThrow(() -> new RuntimeException("Worksheet not found"));
@@ -64,19 +64,17 @@ public class WorksheetAttemptService {
 
         Collections.shuffle(questions);
 
-        List<QuestionResponse> responseList = new ArrayList<>();
+        List<StudentQuestionResponse> responseList = new ArrayList<>();
 
         for (Question q : questions) {
 
             List<String> options = new ArrayList<>(q.getOptions());
             Collections.shuffle(options);
 
-            // ✅ FIXED: using builder instead of constructor
-            QuestionResponse res = QuestionResponse.builder()
-                    .id(q.getId())
-                    .questionText(q.getQuestionText())
-                    .options(options)
-                    .build();
+            StudentQuestionResponse res = new StudentQuestionResponse();
+            res.setQuestionId(q.getId());
+            res.setQuestionText(q.getQuestionText());
+            res.setOptions(options);
 
             responseList.add(res);
         }
@@ -104,7 +102,7 @@ public class WorksheetAttemptService {
                 .findTopByWorksheetIdOrderByVersionNumberDesc(request.getWorksheetId())
                 .orElseThrow(() -> new RuntimeException("Worksheet version not found"));
 
-        Map<String, Question> questionMap = new HashMap<>();
+        List<Question> questions = new ArrayList<>();
 
         for (var wq : version.getQuestions()) {
             Question q = questionRepository
@@ -113,11 +111,16 @@ public class WorksheetAttemptService {
                             "Question not found: " + wq.getQuestionMasterId()
                     ));
 
-            questionMap.put(q.getId(), q);
+            questions.add(q);
         }
 
-        if (questionMap.isEmpty()) {
+        if (questions.isEmpty()) {
             throw new RuntimeException("No questions found");
+        }
+
+        Map<String, Question> questionMap = new HashMap<>();
+        for (Question q : questions) {
+            questionMap.put(q.getId(), q);
         }
 
         int correct = 0;
@@ -130,23 +133,24 @@ public class WorksheetAttemptService {
             String questionId = entry.getKey();
             String studentAnswer = entry.getValue();
 
-            Question q = questionMap.get(questionId);
-            if (q == null) continue;
+            Question question = questionMap.get(questionId);
+            if (question == null) continue;
 
-            // ✅ SAFE CORRECT ANSWER EXTRACTION
+            // ✅ SAFE CORRECT ANSWER EXTRACTION (FIXED)
             String correctAnswer = null;
 
-            if (q.getOptions() != null &&
-                    q.getCorrectAnswerIndex() != null &&
-                    q.getCorrectAnswerIndex() >= 0 &&
-                    q.getCorrectAnswerIndex() < q.getOptions().size()) {
+            if (question.getOptions() != null &&
+                    question.getCorrectAnswerIndex() != null &&
+                    question.getCorrectAnswerIndex() >= 0 &&
+                    question.getCorrectAnswerIndex() < question.getOptions().size()) {
 
-                correctAnswer = q.getOptions().get(q.getCorrectAnswerIndex());
+                correctAnswer = question.getOptions()
+                        .get(question.getCorrectAnswerIndex());
             }
 
             if (correctAnswer == null) {
-                log.error("❌ Invalid question data: {}", q);
-                throw new RuntimeException("Invalid question data for questionId=" + q.getId());
+                log.error("❌ Invalid question data: {}", question);
+                throw new RuntimeException("Invalid question data for questionId=" + question.getId());
             }
 
             boolean isCorrect = correctAnswer.equals(studentAnswer);
@@ -156,20 +160,20 @@ public class WorksheetAttemptService {
 
             results.add(
                     WorksheetResultResponse.QuestionResult.builder()
-                            .questionId(q.getId())
-                            .question(q.getQuestionText())
+                            .questionId(question.getId())
+                            .question(question.getQuestionText())
                             .correctAnswer(correctAnswer)
                             .studentAnswer(studentAnswer)
-                            .reason(q.getReason())
+                            .reason(question.getReason())
                             .isCorrect(isCorrect)
                             .build()
             );
         }
 
-        int total = questionMap.size();
+        int total = questions.size();
         double percentage = total == 0 ? 0 : ((double) correct / total) * 100;
 
-        log.info("Evaluation done: correct={}, wrong={}", correct, wrong);
+        log.info("Evaluation completed: correct={}, wrong={}", correct, wrong);
 
         return WorksheetResultResponse.builder()
                 .totalQuestions(total)

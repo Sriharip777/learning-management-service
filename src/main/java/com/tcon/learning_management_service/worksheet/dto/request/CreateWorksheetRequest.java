@@ -13,5 +13,4 @@ public class CreateWorksheetRequest {
 
     private String instructions;
     private String difficultyLevel;
-    private Integer estimatedDuration;
 }

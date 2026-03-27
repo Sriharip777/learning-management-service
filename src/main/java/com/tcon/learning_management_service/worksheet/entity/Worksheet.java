@@ -23,6 +23,8 @@ public class Worksheet {
 
     private Integer currentVersion;
 
+    private Integer duration; // ✅ ADD THIS
+
     private WorksheetStatus status;
 
     private LocalDateTime createdAt;
