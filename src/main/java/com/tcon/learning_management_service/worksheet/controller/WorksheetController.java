@@ -4,11 +4,9 @@ import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorkshee
 import com.tcon.learning_management_service.worksheet.dto.response.QuestionResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
-import com.tcon.learning_management_service.worksheet.entity.Question;
 import com.tcon.learning_management_service.worksheet.service.WorksheetAttemptService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetQueryService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetService;
-import com.tcon.learning_management_service.worksheet.repository.QuestionRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,7 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/worksheets")
@@ -26,7 +24,6 @@ public class WorksheetController {
     private final WorksheetQueryService queryService;
     private final WorksheetService worksheetService;
     private final WorksheetAttemptService worksheetAttemptService;
-    private final QuestionRepository questionRepository;
 
     /*
      * =====================================
@@ -79,23 +76,16 @@ public class WorksheetController {
 
     /*
      * =====================================
-     * GET QUESTIONS FOR STUDENT (SHUFFLED + SAFE)
+     * GET QUESTIONS FOR STUDENT (FIXED)
      * =====================================
      */
     @GetMapping("/{worksheetId}/questions")
-    public List<QuestionResponse> getQuestions(
+    public ResponseEntity<List<QuestionResponse>> getQuestions(
             @PathVariable String worksheetId
     ) {
-
-        List<Question> questions =
-                questionRepository.findByWorksheetId(worksheetId);
-
-        // 🔀 Shuffle questions
-        Collections.shuffle(questions);
-
-        return questions.stream()
-                .map(this::mapToShuffledResponse)
-                .toList();
+        return ResponseEntity.ok(
+                worksheetAttemptService.getShuffledQuestions(worksheetId)
+        );
     }
 
     /*
@@ -110,24 +100,5 @@ public class WorksheetController {
         return ResponseEntity.ok(
                 worksheetAttemptService.submitWorksheet(request)
         );
-    }
-
-    /*
-     * =====================================
-     * HELPER METHOD: SHUFFLE OPTIONS
-     * =====================================
-     */
-    private QuestionResponse mapToShuffledResponse(Question q) {
-
-        List<String> options = new ArrayList<>(q.getOptions());
-
-        // 🔀 Shuffle options
-        Collections.shuffle(options);
-
-        return QuestionResponse.builder()
-                .id(q.getId())
-                .questionText(q.getQuestionText())
-                .options(options)
-                .build();
     }
 }

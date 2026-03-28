@@ -7,8 +7,10 @@ import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResp
 import com.tcon.learning_management_service.worksheet.service.WorksheetPublishService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetVersionService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/admin/worksheets")
@@ -20,7 +22,9 @@ public class WorksheetAdminController {
     private final WorksheetPublishService publishService;
 
     /*
+     * =====================================
      * CREATE WORKSHEET
+     * =====================================
      */
     @PostMapping
     public WorksheetResponse createWorksheet(
@@ -31,7 +35,9 @@ public class WorksheetAdminController {
     }
 
     /*
+     * =====================================
      * UPDATE WORKSHEET
+     * =====================================
      */
     @PutMapping
     public WorksheetResponse updateWorksheet(
@@ -41,7 +47,9 @@ public class WorksheetAdminController {
     }
 
     /*
-     * ADD QUESTIONS
+     * =====================================
+     * ADD QUESTIONS (MANUAL - OPTIONAL)
+     * =====================================
      */
     @PostMapping("/questions")
     public void addQuestions(
@@ -51,7 +59,22 @@ public class WorksheetAdminController {
     }
 
     /*
+     * =====================================
+     * UPLOAD QUESTIONS (EXCEL) 🔥 NEW
+     * =====================================
+     */
+    @PostMapping("/{worksheetId}/upload")
+    public String uploadQuestions(
+            @PathVariable String worksheetId,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return worksheetService.uploadQuestionsFromExcel(worksheetId, file);
+    }
+
+    /*
+     * =====================================
      * PUBLISH WORKSHEET
+     * =====================================
      */
     @PostMapping("/{worksheetId}/publish")
     public void publishWorksheet(

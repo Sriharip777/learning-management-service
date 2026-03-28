@@ -11,17 +11,21 @@ public class WorksheetResultResponse {
 
     private int totalQuestions;
     private int correctAnswers;
-    private int score;
+    private int wrongAnswers;
+    private double scorePercentage;
 
     private List<QuestionResult> results;
 
     @Data
     @Builder
     public static class QuestionResult {
-        private Long questionId;
+
+        private String questionId;
         private String question;
-        private int correctAnswer;
-        private int studentAnswer;
+
+        private String correctAnswer;   // 🔥 fixed
+        private String studentAnswer;   // 🔥 fixed
+
         private String reason;
         private boolean isCorrect;
     }
