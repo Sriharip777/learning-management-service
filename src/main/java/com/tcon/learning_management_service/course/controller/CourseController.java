@@ -139,6 +139,14 @@ public class CourseController {
         return ResponseEntity.ok(courses);
     }
 
+    // Public popular courses endpoint (no auth, no headers)
+    @GetMapping("/public/published")
+    public ResponseEntity<List<CourseDto>> getPublicPublishedCourses() {
+        List<CourseDto> courses = courseService.getPublishedCourses();
+        return ResponseEntity.ok(courses);
+    }
+
+
     @PostMapping("/search")
     public ResponseEntity<List<CourseDto>> searchCourses(@RequestBody CourseSearchDto searchDto) {
         List<CourseDto> courses = courseSearchService.searchCourses(searchDto);

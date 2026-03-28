@@ -31,10 +31,12 @@ public class JwtDelegatingFilter extends OncePerRequestFilter {
         String path   = request.getRequestURI();
         String method = request.getMethod();
 
-        // ✅ Skip public GET endpoints entirely
+        // Public GET endpoints – no auth required, just continue
         boolean isPublicGet = "GET".equalsIgnoreCase(method) && (
                 path.startsWith("/api/courses/published") ||
-                        path.startsWith("/api/courses/search") ||
+                        path.startsWith("/api/courses/public/published") ||
+                        path.startsWith("/api/courses/search")    ||
+                        path.startsWith("/api/courses/popular")   ||
                         path.equals("/api/grades") ||
                         path.matches("/api/grades/[^/]+/subjects") ||
                         path.matches("/api/subjects/[^/]+/topics") ||
@@ -47,21 +49,18 @@ public class JwtDelegatingFilter extends OncePerRequestFilter {
             return;
         }
 
-        // ✅ FIX: Read user info from gateway-injected headers (no Feign call needed)
+        // Read user info from gateway headers
         String userId = request.getHeader("X-User-Id");
         String role   = request.getHeader("X-User-Role");
         String email  = request.getHeader("X-User-Email");
 
-        // If headers are missing, fall back to checking Authorization header exists
-        // (for direct service-to-service calls without gateway)
+        // If no user headers → treat as anonymous, let Spring Security decide
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(role)) {
-            log.warn("Missing X-User-Id or X-User-Role headers for path: {} {}", method, path);
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Missing user identity headers\"}");
+            log.debug("Anonymous request for path: {} {}", method, path);
+            filterChain.doFilter(request, response);
             return;
         }
 
-        // ✅ FIX: Use actual role from header, not hardcoded ROLE_ADMIN
         String authority = role.startsWith("ROLE_") ? role : "ROLE_" + role;
 
         log.info("✅ Authenticated from gateway headers: userId={}, role={}, email={}", userId, authority, email);
@@ -76,4 +75,5 @@ public class JwtDelegatingFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(authentication);
         filterChain.doFilter(request, response);
     }
+
 }

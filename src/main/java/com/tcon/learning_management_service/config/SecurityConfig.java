@@ -33,7 +33,9 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public GET endpoints (no auth needed)
-                        .requestMatchers(HttpMethod.GET,
+                        .requestMatchers(HttpMethod.GET, "/api/courses/**", "/api/grades/**",      // <- add this
+                                "/api/subjects/**",
+                                "/api/topics/**",
                                 "/api/courses/published",
                                 "/api/courses/search",
                                 "/api/grades",                        // dropdown
