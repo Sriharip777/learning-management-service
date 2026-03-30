@@ -3,6 +3,7 @@ package com.tcon.learning_management_service.worksheet.controller;
 import com.tcon.learning_management_service.worksheet.dto.request.AddQuestionRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.CreateWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.UpdateWorksheetRequest;
+import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResponse;
 import com.tcon.learning_management_service.worksheet.service.WorksheetPublishService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetService;
@@ -48,26 +49,35 @@ public class WorksheetAdminController {
 
     /*
      * =====================================
-     * ADD QUESTIONS (MANUAL - OPTIONAL)
+     * ADD QUESTIONS (MANUAL)
      * =====================================
      */
-    @PostMapping("/questions")
+    @PostMapping("/{worksheetId}/questions")
     public void addQuestions(
+            @PathVariable String worksheetId,
             @RequestBody AddQuestionRequest request
     ) {
-        versionService.addQuestions(request);
+        versionService.addQuestions(worksheetId, request);
     }
 
     /*
      * =====================================
-     * UPLOAD QUESTIONS (EXCEL) 🔥 NEW
+     * UPLOAD QUESTIONS (EXCEL) 🔥
      * =====================================
      */
-    @PostMapping("/{worksheetId}/upload")
-    public String uploadQuestions(
+    @PostMapping("/{worksheetId}/upload-excel")
+    public UploadResponse uploadQuestionsFromExcel(
             @PathVariable String worksheetId,
             @RequestParam("file") MultipartFile file
     ) {
+        if (file.isEmpty()) {
+            throw new RuntimeException("File is empty");
+        }
+
+        if (file.getOriginalFilename() == null || !file.getOriginalFilename().endsWith(".xlsx")) {
+            throw new RuntimeException("Only Excel (.xlsx) files are allowed");
+        }
+
         return worksheetService.uploadQuestionsFromExcel(worksheetId, file);
     }
 

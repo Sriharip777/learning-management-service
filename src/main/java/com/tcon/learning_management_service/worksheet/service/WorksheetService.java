@@ -2,6 +2,8 @@ package com.tcon.learning_management_service.worksheet.service;
 
 import com.tcon.learning_management_service.worksheet.dto.request.CreateWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.UpdateWorksheetRequest;
+import com.tcon.learning_management_service.worksheet.dto.response.ErrorRow;
+import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResponse;
 import com.tcon.learning_management_service.worksheet.entity.Question;
 import com.tcon.learning_management_service.worksheet.entity.Worksheet;
@@ -37,17 +39,12 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * CREATE WORKSHEET
+     * CREATE WORKSHEET (UNCHANGED)
      * =====================================
      */
-    public WorksheetResponse createWorksheet(
-            CreateWorksheetRequest request,
-            String createdBy
-    ) {
+    public WorksheetResponse createWorksheet(CreateWorksheetRequest request, String createdBy) {
 
-        if (request.getGradeId() == null ||
-                request.getSubjectId() == null ||
-                request.getTopicId() == null) {
+        if (request.getGradeId() == null || request.getSubjectId() == null || request.getTopicId() == null) {
             throw new RuntimeException("Grade, Subject, Topic are required");
         }
 
@@ -62,19 +59,17 @@ public class WorksheetService {
         worksheet.setGradeId(request.getGradeId());
         worksheet.setSubjectId(request.getSubjectId());
         worksheet.setTopicId(request.getTopicId());
-
         worksheet.setDuration(topic.getDuration());
         worksheet.setStatus(WorksheetStatus.DRAFT);
         worksheet.setCreatedAt(LocalDateTime.now());
 
         Worksheet saved = worksheetRepository.save(worksheet);
-
         return worksheetMapper.toResponse(saved);
     }
 
     /*
      * =====================================
-     * UPDATE WORKSHEET
+     * UPDATE WORKSHEET (UNCHANGED)
      * =====================================
      */
     public WorksheetResponse updateWorksheet(UpdateWorksheetRequest request) {
@@ -89,13 +84,12 @@ public class WorksheetService {
         worksheet.setUpdatedAt(LocalDateTime.now());
 
         Worksheet updated = worksheetRepository.save(worksheet);
-
         return worksheetMapper.toResponse(updated);
     }
 
     /*
      * =====================================
-     * GET WORKSHEET
+     * GET WORKSHEET (UNCHANGED)
      * =====================================
      */
     public WorksheetResponse getWorksheet(String worksheetId) {
@@ -109,7 +103,7 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * GET PUBLISHED WORKSHEETS
+     * GET PUBLISHED WORKSHEETS (UNCHANGED)
      * =====================================
      */
     public List<WorksheetResponse> getPublishedWorksheets(
@@ -118,14 +112,13 @@ public class WorksheetService {
             String topicId
     ) {
 
-        List<Worksheet> worksheets =
-                worksheetRepository
-                        .findByGradeIdAndSubjectIdAndTopicIdAndStatus(
-                                gradeId,
-                                subjectId,
-                                topicId,
-                                WorksheetStatus.PUBLISHED
-                        );
+        List<Worksheet> worksheets = worksheetRepository
+                .findByGradeIdAndSubjectIdAndTopicIdAndStatus(
+                        gradeId,
+                        subjectId,
+                        topicId,
+                        WorksheetStatus.PUBLISHED
+                );
 
         return worksheets.stream()
                 .map(worksheetMapper::toResponse)
@@ -134,13 +127,10 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * UPLOAD QUESTIONS FROM EXCEL
+     * UPLOAD QUESTIONS FROM EXCEL (NEW + FIXED)
      * =====================================
      */
-    public String uploadQuestionsFromExcel(
-            String worksheetId,
-            MultipartFile file
-    ) {
+    public UploadResponse uploadQuestionsFromExcel(String worksheetId, MultipartFile file) {
 
         log.info("Uploading questions for worksheet={}", worksheetId);
 
@@ -150,16 +140,13 @@ public class WorksheetService {
 
         worksheetValidator.validateEditable(worksheet);
 
-        if (file.isEmpty() ||
-                file.getOriginalFilename() == null ||
+        if (file.isEmpty() || file.getOriginalFilename() == null ||
                 !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
             throw new RuntimeException("Upload valid .xlsx file");
         }
 
         List<Question> questions = new ArrayList<>();
-        int success = 0;
-        int failed = 0;
-        List<String> errors = new ArrayList<>();
+        List<ErrorRow> errors = new ArrayList<>();
 
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
 
@@ -189,9 +176,12 @@ public class WorksheetService {
                     List<String> options = List.of(a, b, c, d);
                     int correctIndex = mapCorrect(correct);
 
+                    if (options.stream().anyMatch(opt -> opt == null || opt.isBlank())) {
+                        throw new RuntimeException("Empty option found");
+                    }
+
                     Question question = new Question();
 
-                    // ✅ FIXED PART (IMPORTANT)
                     question.setQuestionMasterId(UUID.randomUUID().toString());
                     question.setQuestionVersionId("v1");
 
@@ -200,12 +190,13 @@ public class WorksheetService {
                     question.setCorrectAnswerIndex(correctIndex);
                     question.setReason(reason);
 
+                    // NOTE: Question entity does NOT contain grade/subject/topic in current design
+                    // Mapping is handled via Worksheet + Version system
+
                     questions.add(question);
-                    success++;
 
                 } catch (Exception ex) {
-                    failed++;
-                    errors.add("Row " + i + ": " + ex.getMessage());
+                    errors.add(new ErrorRow(i + 1, ex.getMessage()));
                 }
             }
 
@@ -213,21 +204,28 @@ public class WorksheetService {
                 throw new RuntimeException("No valid questions found in Excel");
             }
 
-            questionRepository.saveAll(questions);
+            List<Question> savedQuestions = questionRepository.saveAll(questions);
+
+            // NOTE: Questions are managed via WorksheetVersionService
+            // No direct questionIds mapping in Worksheet entity
 
         } catch (Exception e) {
             log.error("Excel processing failed", e);
             throw new RuntimeException("Excel processing failed: " + e.getMessage());
         }
 
-        log.info("Excel processed: success={}, failed={}", success, failed);
+        log.info("Excel processed: success={}, failed={}", questions.size(), errors.size());
 
-        return "Uploaded: " + success + ", Failed: " + failed + ", Errors: " + errors;
+        return new UploadResponse(
+                questions.size(),
+                errors.size(),
+                errors
+        );
     }
 
     /*
      * =====================================
-     * HELPER METHODS
+     * HELPER METHODS (UNCHANGED)
      * =====================================
      */
 
@@ -242,13 +240,7 @@ public class WorksheetService {
         };
     }
 
-    private void validateRow(int row,
-                             String q,
-                             String a,
-                             String b,
-                             String c,
-                             String d,
-                             String correct) {
+    private void validateRow(int row, String q, String a, String b, String c, String d, String correct) {
 
         if (q == null || q.isBlank())
             throw new RuntimeException("Question is empty");

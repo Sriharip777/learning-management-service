@@ -2,6 +2,7 @@ package com.tcon.learning_management_service.worksheet.controller;
 
 import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.response.QuestionResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
 import com.tcon.learning_management_service.worksheet.service.WorksheetAttemptService;
@@ -57,26 +58,35 @@ public class WorksheetController {
 
     /*
      * =====================================
-     * UPLOAD QUESTIONS (EXCEL)
+     * UPLOAD QUESTIONS (EXCEL) 🔥 (FIXED)
      * =====================================
      */
     @PostMapping("/{worksheetId}/questions/upload")
-    public ResponseEntity<String> uploadQuestions(
+    public ResponseEntity<UploadResponse> uploadQuestions(
             @PathVariable String worksheetId,
             @RequestParam("file") MultipartFile file
     ) {
 
-        String result = worksheetService.uploadQuestionsFromExcel(
+        if (file.isEmpty()) {
+            throw new RuntimeException("File is empty");
+        }
+
+        if (file.getOriginalFilename() == null ||
+                !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
+            throw new RuntimeException("Only Excel (.xlsx) files are allowed");
+        }
+
+        UploadResponse response = worksheetService.uploadQuestionsFromExcel(
                 worksheetId,
                 file
         );
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(response);
     }
 
     /*
      * =====================================
-     * GET QUESTIONS FOR STUDENT (FIXED)
+     * GET QUESTIONS FOR STUDENT
      * =====================================
      */
     @GetMapping("/{worksheetId}/questions")

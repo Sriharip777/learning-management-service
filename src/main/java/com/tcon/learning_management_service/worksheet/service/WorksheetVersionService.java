@@ -24,20 +24,24 @@ public class WorksheetVersionService {
 
     /*
      * ======================================
-     * ADD QUESTIONS
+     * ADD QUESTIONS (UPDATED)
      * ======================================
      */
 
-    public WorksheetVersion addQuestions(AddQuestionRequest request) {
+    public WorksheetVersion addQuestions(String worksheetId, AddQuestionRequest request) {
 
-        Worksheet worksheet =
-                worksheetRepository.findById(request.getWorksheetId())
-                        .orElse(null);
+        // 🔥 Fetch worksheet using path variable
+        Worksheet worksheet = worksheetRepository.findById(worksheetId)
+                .orElse(null);
 
         validator.validateWorksheetExists(worksheet);
 
-        WorksheetVersion version =
-                getOrCreateEditableVersion(worksheet);
+        // 🔥 Safety check (optional but good practice)
+        if (request.getWorksheetId() != null && !request.getWorksheetId().equals(worksheetId)) {
+            throw new RuntimeException("WorksheetId mismatch between path and body");
+        }
+
+        WorksheetVersion version = getOrCreateEditableVersion(worksheet);
 
         List<WorksheetQuestionRef> refs = new ArrayList<>();
 
@@ -71,20 +75,15 @@ public class WorksheetVersionService {
      * ======================================
      */
 
-    private WorksheetVersion getOrCreateEditableVersion(
-            Worksheet worksheet
-    ) {
+    private WorksheetVersion getOrCreateEditableVersion(Worksheet worksheet) {
 
         if (worksheet.getCurrentVersion() == null) {
             return createVersion(worksheet, 1);
         }
 
-        WorksheetVersion latest =
-                versionRepository
-                        .findTopByWorksheetIdOrderByVersionNumberDesc(
-                                worksheet.getId()
-                        )
-                        .orElse(null);
+        WorksheetVersion latest = versionRepository
+                .findTopByWorksheetIdOrderByVersionNumberDesc(worksheet.getId())
+                .orElse(null);
 
         validator.validateVersionExists(latest);
 
@@ -102,10 +101,7 @@ public class WorksheetVersionService {
      * ======================================
      */
 
-    public WorksheetVersion createVersion(
-            Worksheet worksheet,
-            int versionNumber
-    ) {
+    public WorksheetVersion createVersion(Worksheet worksheet, int versionNumber) {
 
         WorksheetVersion version = new WorksheetVersion();
 
@@ -124,28 +120,18 @@ public class WorksheetVersionService {
      * ======================================
      */
 
-    public WorksheetVersion cloneVersion(
-            WorksheetVersion oldVersion
-    ) {
+    public WorksheetVersion cloneVersion(WorksheetVersion oldVersion) {
 
         WorksheetVersion newVersion = new WorksheetVersion();
 
         newVersion.setWorksheetId(oldVersion.getWorksheetId());
-        newVersion.setVersionNumber(
-                oldVersion.getVersionNumber() + 1
-        );
-
+        newVersion.setVersionNumber(oldVersion.getVersionNumber() + 1);
         newVersion.setStatus(WorksheetStatus.DRAFT);
         newVersion.setCreatedAt(LocalDateTime.now());
 
         // clone questions safely
-        newVersion.setQuestions(
-                new ArrayList<>(oldVersion.getQuestions())
-        );
-
-        newVersion.setQuestionCount(
-                oldVersion.getQuestionCount()
-        );
+        newVersion.setQuestions(new ArrayList<>(oldVersion.getQuestions()));
+        newVersion.setQuestionCount(oldVersion.getQuestionCount());
 
         return versionRepository.save(newVersion);
     }
