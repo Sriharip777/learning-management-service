@@ -20,7 +20,12 @@ public class WorksheetDetailResponse {
         private String questionMasterId;
         private String questionVersionId;
 
+        private String questionText;
+        private List<String> options;
+
         private Integer orderIndex;
         private Integer marks;
+
+        private String reason;
     }
 }
