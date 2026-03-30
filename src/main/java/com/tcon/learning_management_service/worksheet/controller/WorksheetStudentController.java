@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/student/worksheets")
+@RequestMapping("/api/student/worksheets")
 @RequiredArgsConstructor
 public class WorksheetStudentController {
 

@@ -18,7 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/worksheets")
+@RequestMapping("/api/worksheets")
 @RequiredArgsConstructor
 public class WorksheetController {
 
