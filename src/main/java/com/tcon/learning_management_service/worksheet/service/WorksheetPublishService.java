@@ -7,8 +7,11 @@ import com.tcon.learning_management_service.worksheet.event.WorksheetEventPublis
 import com.tcon.learning_management_service.worksheet.repository.WorksheetRepository;
 import com.tcon.learning_management_service.worksheet.repository.WorksheetVersionRepository;
 import com.tcon.learning_management_service.worksheet.validation.WorksheetValidator;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -28,34 +31,34 @@ public class WorksheetPublishService {
     public void publishWorksheet(String worksheetId) {
 
         // 1️⃣ Fetch Worksheet
-        Worksheet worksheet =
-                worksheetRepository.findById(worksheetId)
-                        .orElse(null);
+        Worksheet worksheet = worksheetRepository
+                .findById(worksheetId)
+                .orElseThrow(() -> new RuntimeException("Worksheet not found"));
 
         validator.validateWorksheetExists(worksheet);
 
         // 2️⃣ Fetch Latest Version
-        WorksheetVersion version =
-                versionRepository
-                        .findTopByWorksheetIdOrderByVersionNumberDesc(
-                                worksheetId
-                        )
-                        .orElse(null);
+        WorksheetVersion version = versionRepository
+                .findTopByWorksheetIdOrderByVersionNumberDesc(worksheetId)
+                .orElseThrow(() -> new RuntimeException("Worksheet version not found"));
 
         validator.validateVersionExists(version);
 
         // 3️⃣ Validate publish rules
         validator.validatePublishable(version);
 
-        // 4️⃣ Lock Version
-        versionService.lockPublishedVersion(version);
+        // 4️⃣ Lock Version (sets status + publishedAt)
+        version.setStatus(WorksheetStatus.PUBLISHED);              // ✅ IMPORTANT
+        version.setPublishedAt(LocalDateTime.now());               // ✅ IMPORTANT
+
+        versionService.lockPublishedVersion(version);              // (if you have logic inside)
+
+        versionRepository.save(version);                           // ✅ SAVE VERSION
 
         // 5️⃣ Update Worksheet Pointer
-        worksheet.setCurrentVersion(
-                version.getVersionNumber()
-        );
-
+        worksheet.setCurrentVersion(version.getVersionNumber());
         worksheet.setStatus(WorksheetStatus.PUBLISHED);
+        worksheet.setUpdatedAt(LocalDateTime.now());               // ✅ ADD THIS
 
         worksheetRepository.save(worksheet);
 
