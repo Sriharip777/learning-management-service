@@ -5,6 +5,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -24,6 +25,9 @@ public class WorksheetVersion {
     private Integer questionCount;
 
     private List<WorksheetQuestionRef> questions;
+
+    // 🔥 NEW: FLAGGED QUESTIONS (initialized to avoid null issues)
+    private List<QuestionFlag> flaggedQuestions = new ArrayList<>();
 
     private LocalDateTime createdAt;
     private LocalDateTime publishedAt;

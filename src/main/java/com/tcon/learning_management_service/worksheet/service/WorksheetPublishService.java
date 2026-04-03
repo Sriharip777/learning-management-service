@@ -37,6 +37,11 @@ public class WorksheetPublishService {
 
         validator.validateWorksheetExists(worksheet);
 
+        // 🔥 NEW: VALIDATE QUESTIONS EXIST
+        if (worksheet.getHasQuestions() == null || !worksheet.getHasQuestions()) {
+            throw new RuntimeException("Cannot publish worksheet without uploading questions");
+        }
+
         // 2️⃣ Fetch Latest Version
         WorksheetVersion version = versionRepository
                 .findTopByWorksheetIdOrderByVersionNumberDesc(worksheetId)
@@ -44,21 +49,36 @@ public class WorksheetPublishService {
 
         validator.validateVersionExists(version);
 
+        // 🔥 EXTRA SAFETY
+        if (version.getQuestionCount() == null || version.getQuestionCount() == 0) {
+            throw new RuntimeException("Worksheet version has no questions");
+        }
+
         // 3️⃣ Validate publish rules
         validator.validatePublishable(version);
 
-        // 4️⃣ Lock Version (sets status + publishedAt)
-        version.setStatus(WorksheetStatus.PUBLISHED);              // ✅ IMPORTANT
-        version.setPublishedAt(LocalDateTime.now());               // ✅ IMPORTANT
+        // 4️⃣ Lock Version
+        version.setStatus(WorksheetStatus.PUBLISHED);
+        version.setPublishedAt(LocalDateTime.now());
 
-        versionService.lockPublishedVersion(version);              // (if you have logic inside)
-
-        versionRepository.save(version);                           // ✅ SAVE VERSION
+        versionService.lockPublishedVersion(version);
+        versionRepository.save(version);
 
         // 5️⃣ Update Worksheet Pointer
         worksheet.setCurrentVersion(version.getVersionNumber());
         worksheet.setStatus(WorksheetStatus.PUBLISHED);
-        worksheet.setUpdatedAt(LocalDateTime.now());               // ✅ ADD THIS
+        worksheet.setUpdatedAt(LocalDateTime.now());
+
+        // 🔥 Initialize Review Flow
+        worksheet.setReviewStatus(
+                worksheet.getReviewStatus() == null
+                        ? com.tcon.learning_management_service.worksheet.entity.ReviewStatus.PENDING
+                        : worksheet.getReviewStatus()
+        );
+
+        worksheet.setReviewedBy(null);
+        worksheet.setReviewComments(null);
+        worksheet.setReviewedAt(null);
 
         worksheetRepository.save(worksheet);
 

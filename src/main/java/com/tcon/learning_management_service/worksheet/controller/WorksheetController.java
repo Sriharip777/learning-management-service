@@ -5,6 +5,8 @@ import com.tcon.learning_management_service.worksheet.dto.response.QuestionRespo
 import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
+import com.tcon.learning_management_service.worksheet.entity.WorksheetAttempt;
+import com.tcon.learning_management_service.worksheet.repository.WorksheetAttemptRepository;
 import com.tcon.learning_management_service.worksheet.service.WorksheetAttemptService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetQueryService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetService;
@@ -25,6 +27,9 @@ public class WorksheetController {
     private final WorksheetQueryService queryService;
     private final WorksheetService worksheetService;
     private final WorksheetAttemptService worksheetAttemptService;
+
+    // 🔥 ADDED (from colleague)
+    private final WorksheetAttemptRepository worksheetAttemptRepository;
 
     /*
      * =====================================
@@ -58,7 +63,7 @@ public class WorksheetController {
 
     /*
      * =====================================
-     * UPLOAD QUESTIONS (EXCEL) 🔥 (FIXED)
+     * UPLOAD QUESTIONS (EXCEL)
      * =====================================
      */
     @PostMapping("/{worksheetId}/questions/upload")
@@ -110,5 +115,32 @@ public class WorksheetController {
         return ResponseEntity.ok(
                 worksheetAttemptService.submitWorksheet(request)
         );
+    }
+
+    /*
+     * =====================================
+     * 🔥 NEW: GET RESULTS FOR TEACHER
+     * =====================================
+     */
+    @GetMapping("/{worksheetId}/results")
+    public ResponseEntity<List<WorksheetAttempt>> getResults(
+            @PathVariable String worksheetId
+    ) {
+        List<WorksheetAttempt> attempts =
+                worksheetAttemptRepository.findByWorksheetId(worksheetId);
+
+        return ResponseEntity.ok(attempts);
+    }
+
+    /*
+     * =====================================
+     * 🔥 NEW: PREVIEW WORKSHEET
+     * =====================================
+     */
+    @GetMapping("/{worksheetId}/preview")
+    public WorksheetDetailResponse previewWorksheet(
+            @PathVariable String worksheetId
+    ) {
+        return queryService.getWorksheetDetails(worksheetId);
     }
 }

@@ -7,14 +7,17 @@ import com.tcon.learning_management_service.worksheet.entity.Question;
 import com.tcon.learning_management_service.worksheet.entity.Worksheet;
 import com.tcon.learning_management_service.worksheet.entity.WorksheetStatus;
 import com.tcon.learning_management_service.worksheet.entity.WorksheetVersion;
+import com.tcon.learning_management_service.worksheet.entity.WorksheetAttempt;
 import com.tcon.learning_management_service.worksheet.repository.QuestionRepository;
 import com.tcon.learning_management_service.worksheet.repository.WorksheetRepository;
 import com.tcon.learning_management_service.worksheet.repository.WorksheetVersionRepository;
+import com.tcon.learning_management_service.worksheet.repository.WorksheetAttemptRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -25,6 +28,7 @@ public class WorksheetAttemptService {
     private final QuestionRepository questionRepository;
     private final WorksheetRepository worksheetRepository;
     private final WorksheetVersionRepository worksheetVersionRepository;
+    private final WorksheetAttemptRepository worksheetAttemptRepository;
 
     /*
      * =====================================
@@ -71,7 +75,6 @@ public class WorksheetAttemptService {
             List<String> options = new ArrayList<>(q.getOptions());
             Collections.shuffle(options);
 
-            // ✅ FIXED: using builder instead of constructor
             QuestionResponse res = QuestionResponse.builder()
                     .id(q.getId())
                     .questionText(q.getQuestionText())
@@ -86,12 +89,23 @@ public class WorksheetAttemptService {
 
     /*
      * =====================================
-     * SUBMIT WORKSHEET (EVALUATE)
+     * SUBMIT WORKSHEET (EVALUATE + SAVE)
      * =====================================
      */
     public WorksheetResultResponse submitWorksheet(SubmitWorksheetRequest request) {
 
         log.info("Submitting worksheet for student={}", request.getStudentId());
+
+        // 🔥 PREVENT MULTIPLE ATTEMPTS
+        Optional<WorksheetAttempt> existingAttempt =
+                worksheetAttemptRepository.findByWorksheetIdAndStudentId(
+                        request.getWorksheetId(),
+                        request.getStudentId()
+                );
+
+        if (existingAttempt.isPresent()) {
+            throw new RuntimeException("You have already submitted this worksheet");
+        }
 
         Worksheet worksheet = worksheetRepository.findById(request.getWorksheetId())
                 .orElseThrow(() -> new RuntimeException("Worksheet not found"));
@@ -133,7 +147,6 @@ public class WorksheetAttemptService {
             Question q = questionMap.get(questionId);
             if (q == null) continue;
 
-            // ✅ SAFE CORRECT ANSWER EXTRACTION
             String correctAnswer = null;
 
             if (q.getOptions() != null &&
@@ -145,7 +158,7 @@ public class WorksheetAttemptService {
             }
 
             if (correctAnswer == null) {
-                log.error("❌ Invalid question data: {}", q);
+                log.error("Invalid question data: {}", q);
                 throw new RuntimeException("Invalid question data for questionId=" + q.getId());
             }
 
@@ -170,6 +183,18 @@ public class WorksheetAttemptService {
         double percentage = total == 0 ? 0 : ((double) correct / total) * 100;
 
         log.info("Evaluation done: correct={}, wrong={}", correct, wrong);
+
+        // 🔥 SAVE ATTEMPT (COLLEAGUE CHANGE)
+        WorksheetAttempt attempt = new WorksheetAttempt();
+        attempt.setWorksheetId(request.getWorksheetId());
+        attempt.setStudentId(request.getStudentId());
+        attempt.setTotalQuestions(total);
+        attempt.setCorrectAnswers(correct);
+        attempt.setScore(percentage);
+        attempt.setSubmittedAt(LocalDateTime.now());
+        attempt.setAnswers(request.getAnswers());
+
+        worksheetAttemptRepository.save(attempt);
 
         return WorksheetResultResponse.builder()
                 .totalQuestions(total)

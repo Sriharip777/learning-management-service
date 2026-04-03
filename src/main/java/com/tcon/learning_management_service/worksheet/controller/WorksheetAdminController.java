@@ -5,13 +5,17 @@ import com.tcon.learning_management_service.worksheet.dto.request.CreateWorkshee
 import com.tcon.learning_management_service.worksheet.dto.request.UpdateWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
 import com.tcon.learning_management_service.worksheet.service.WorksheetPublishService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetVersionService;
+import com.tcon.learning_management_service.worksheet.entity.Worksheet;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/worksheets")
@@ -31,7 +35,6 @@ public class WorksheetAdminController {
     public WorksheetResponse createWorksheet(
             @RequestBody CreateWorksheetRequest request
     ) {
-        // createdBy normally comes from JWT
         return worksheetService.createWorksheet(request, "admin");
     }
 
@@ -49,6 +52,26 @@ public class WorksheetAdminController {
 
     /*
      * =====================================
+     * 🔥 GET REJECTED WORKSHEETS (FROM YOUR CODE)
+     * =====================================
+     */
+    @GetMapping("/rejected")
+    public List<WorksheetSummaryResponse> getRejectedWorksheets() {
+        return worksheetService.getRejectedWorksheets();
+    }
+
+    /*
+     * =====================================
+     * 🔥 GET ALL WORKSHEETS (FROM COLLEAGUE)
+     * =====================================
+     */
+    @GetMapping
+    public List<Worksheet> getAllWorksheets() {
+        return worksheetService.getAllWorksheets();
+    }
+
+    /*
+     * =====================================
      * ADD QUESTIONS (MANUAL)
      * =====================================
      */
@@ -62,7 +85,7 @@ public class WorksheetAdminController {
 
     /*
      * =====================================
-     * UPLOAD QUESTIONS (EXCEL) 🔥
+     * UPLOAD QUESTIONS (EXCEL)
      * =====================================
      */
     @PostMapping("/{worksheetId}/upload-excel")

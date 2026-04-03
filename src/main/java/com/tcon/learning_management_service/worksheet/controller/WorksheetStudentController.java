@@ -3,6 +3,7 @@ package com.tcon.learning_management_service.worksheet.controller;
 import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.response.StudentQuestionResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
 import com.tcon.learning_management_service.worksheet.service.WorksheetStudentService;
 
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,18 @@ import java.util.List;
 public class WorksheetStudentController {
 
     private final WorksheetStudentService studentService;
+
+    /*
+     * =====================================
+     * 🔥 NEW: GET ASSIGNED WORKSHEETS
+     * =====================================
+     */
+    @GetMapping("/assigned")
+    public List<WorksheetSummaryResponse> getAssignedWorksheets(
+            @RequestParam String studentId
+    ) {
+        return studentService.getAssignedWorksheets(studentId);
+    }
 
     /*
      * =====================================

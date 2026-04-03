@@ -3,18 +3,16 @@ package com.tcon.learning_management_service.worksheet.service;
 import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.response.StudentQuestionResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
-import com.tcon.learning_management_service.worksheet.entity.Question;
-import com.tcon.learning_management_service.worksheet.entity.Worksheet;
-import com.tcon.learning_management_service.worksheet.entity.WorksheetStatus;
-import com.tcon.learning_management_service.worksheet.entity.WorksheetVersion;
-import com.tcon.learning_management_service.worksheet.repository.QuestionRepository;
-import com.tcon.learning_management_service.worksheet.repository.WorksheetRepository;
-import com.tcon.learning_management_service.worksheet.repository.WorksheetVersionRepository;
+import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
+import com.tcon.learning_management_service.worksheet.entity.*;
+import com.tcon.learning_management_service.worksheet.repository.*;
+import com.tcon.learning_management_service.worksheet.mapper.WorksheetMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -26,14 +24,43 @@ public class WorksheetStudentService {
     private final WorksheetRepository worksheetRepository;
     private final WorksheetVersionRepository worksheetVersionRepository;
 
+    private final WorksheetAssignmentRepository assignmentRepository;
+    private final WorksheetMapper worksheetMapper;
+    private final WorksheetAttemptRepository attemptRepository;
+
+    /*
+     * =====================================
+     * 🔥 GET ASSIGNED WORKSHEETS
+     * =====================================
+     */
+    public List<WorksheetSummaryResponse> getAssignedWorksheets(String studentId) {
+
+        List<WorksheetAssignment> assignments =
+                assignmentRepository.findByStudentId(studentId);
+
+        if (assignments == null || assignments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> worksheetIds = assignments.stream()
+                .map(WorksheetAssignment::getWorksheetId)
+                .toList();
+
+        List<Worksheet> worksheets =
+                worksheetRepository.findAllById(worksheetIds);
+
+        return worksheets.stream()
+                .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
+                .map(worksheetMapper::toSummary)
+                .toList();
+    }
+
     /*
      * =====================================
      * GET QUESTIONS (SHUFFLED)
      * =====================================
      */
     public List<StudentQuestionResponse> getShuffledQuestions(String worksheetId) {
-
-        log.info("Fetching questions for worksheet={}", worksheetId);
 
         Worksheet worksheet = worksheetRepository.findById(worksheetId)
                 .orElseThrow(() -> new RuntimeException("Worksheet not found"));
@@ -50,10 +77,11 @@ public class WorksheetStudentService {
 
         for (var wq : version.getQuestions()) {
             Question q = questionRepository
-                    .findById(wq.getQuestionMasterId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Question not found: " + wq.getQuestionMasterId()
-                    ));
+                    .findByQuestionMasterIdAndQuestionVersionId(
+                            wq.getQuestionMasterId(),
+                            wq.getQuestionVersionId()
+                    )
+                    .orElseThrow(() -> new RuntimeException("Question not found"));
 
             questions.add(q);
         }
@@ -84,12 +112,21 @@ public class WorksheetStudentService {
 
     /*
      * =====================================
-     * SUBMIT WORKSHEET (EVALUATE)
+     * SUBMIT WORKSHEET (EVALUATE + SAVE)
      * =====================================
      */
     public WorksheetResultResponse submitWorksheet(SubmitWorksheetRequest request) {
 
-        log.info("Submitting worksheet for student={}", request.getStudentId());
+        // 🔥 Prevent multiple attempts
+        Optional<WorksheetAttempt> existing =
+                attemptRepository.findByWorksheetIdAndStudentId(
+                        request.getWorksheetId(),
+                        request.getStudentId()
+                );
+
+        if (existing.isPresent()) {
+            throw new RuntimeException("Already attempted");
+        }
 
         Worksheet worksheet = worksheetRepository.findById(request.getWorksheetId())
                 .orElseThrow(() -> new RuntimeException("Worksheet not found"));
@@ -106,16 +143,13 @@ public class WorksheetStudentService {
 
         for (var wq : version.getQuestions()) {
             Question q = questionRepository
-                    .findById(wq.getQuestionMasterId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Question not found: " + wq.getQuestionMasterId()
-                    ));
+                    .findByQuestionMasterIdAndQuestionVersionId(
+                            wq.getQuestionMasterId(),
+                            wq.getQuestionVersionId()
+                    )
+                    .orElseThrow(() -> new RuntimeException("Question not found"));
 
             questions.add(q);
-        }
-
-        if (questions.isEmpty()) {
-            throw new RuntimeException("No questions found");
         }
 
         Map<String, Question> questionMap = new HashMap<>();
@@ -130,41 +164,23 @@ public class WorksheetStudentService {
 
         for (Map.Entry<String, String> entry : request.getAnswers().entrySet()) {
 
-            String questionId = entry.getKey();
-            String studentAnswer = entry.getValue();
+            Question q = questionMap.get(entry.getKey());
+            if (q == null) continue;
 
-            Question question = questionMap.get(questionId);
-            if (question == null) continue;
+            String correctAnswer = q.getOptions().get(q.getCorrectAnswerIndex());
 
-            // ✅ SAFE CORRECT ANSWER EXTRACTION (FIXED)
-            String correctAnswer = null;
-
-            if (question.getOptions() != null &&
-                    question.getCorrectAnswerIndex() != null &&
-                    question.getCorrectAnswerIndex() >= 0 &&
-                    question.getCorrectAnswerIndex() < question.getOptions().size()) {
-
-                correctAnswer = question.getOptions()
-                        .get(question.getCorrectAnswerIndex());
-            }
-
-            if (correctAnswer == null) {
-                log.error("❌ Invalid question data: {}", question);
-                throw new RuntimeException("Invalid question data for questionId=" + question.getId());
-            }
-
-            boolean isCorrect = correctAnswer.equals(studentAnswer);
+            boolean isCorrect = correctAnswer.equals(entry.getValue());
 
             if (isCorrect) correct++;
             else wrong++;
 
             results.add(
                     WorksheetResultResponse.QuestionResult.builder()
-                            .questionId(question.getId())
-                            .question(question.getQuestionText())
+                            .questionId(q.getId())
+                            .question(q.getQuestionText())
                             .correctAnswer(correctAnswer)
-                            .studentAnswer(studentAnswer)
-                            .reason(question.getReason())
+                            .studentAnswer(entry.getValue())
+                            .reason(q.getReason())
                             .isCorrect(isCorrect)
                             .build()
             );
@@ -173,7 +189,28 @@ public class WorksheetStudentService {
         int total = questions.size();
         double percentage = total == 0 ? 0 : ((double) correct / total) * 100;
 
-        log.info("Evaluation completed: correct={}, wrong={}", correct, wrong);
+        // 🔥 Save attempt
+        WorksheetAttempt attempt = new WorksheetAttempt();
+        attempt.setWorksheetId(request.getWorksheetId());
+        attempt.setStudentId(request.getStudentId());
+        attempt.setTotalQuestions(total);
+        attempt.setCorrectAnswers(correct);
+        attempt.setScore(percentage);
+        attempt.setSubmittedAt(LocalDateTime.now());
+        attempt.setAnswers(request.getAnswers());
+
+        attemptRepository.save(attempt);
+
+        // 🔥 Mark assignment completed
+        assignmentRepository
+                .findByStudentId(request.getStudentId())
+                .stream()
+                .filter(a -> a.getWorksheetId().equals(request.getWorksheetId()))
+                .findFirst()
+                .ifPresent(a -> {
+                    a.setCompleted(true);
+                    assignmentRepository.save(a);
+                });
 
         return WorksheetResultResponse.builder()
                 .totalQuestions(total)

@@ -22,11 +22,11 @@ public class WorksheetAttempt {
     private Integer totalQuestions;
     private Integer correctAnswers;
 
-    // ❌ REMOVE THIS (optional but recommended)
-    // private Integer score;
+    // ✅ KEEP THIS (better than Integer)
+    private double score;
 
     private LocalDateTime submittedAt;
 
-    // ✅ FIXED (VERY IMPORTANT)
+    // ✅ VERY IMPORTANT
     private Map<String, String> answers; // questionId -> selectedOption
 }

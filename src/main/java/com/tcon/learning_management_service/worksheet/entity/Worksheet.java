@@ -23,10 +23,19 @@ public class Worksheet {
 
     private Integer currentVersion;
 
-    private Integer duration; // ✅ ADD THIS
+    private Integer duration;
 
     private WorksheetStatus status;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // 🔥 REVIEW FIELDS
+    private ReviewStatus reviewStatus = ReviewStatus.PENDING;
+    private String reviewedBy;
+    private String reviewComments;
+    private LocalDateTime reviewedAt;
+
+    // 🔥 NEW: CONTROL PUBLISH BUTTON
+    private Boolean hasQuestions = false;
 }

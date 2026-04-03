@@ -15,8 +15,8 @@ public class Question {
     @Id
     private String id;
 
-    private String questionMasterId;   // ✅ ADD
-    private String questionVersionId;  // ✅ ADD
+    private String questionMasterId;
+    private String questionVersionId;
 
     private String questionText;
 
@@ -25,4 +25,7 @@ public class Question {
     private Integer correctAnswerIndex;
 
     private String reason;
+
+    // 🔥 ADDED (from colleague)
+    private String worksheetId;
 }

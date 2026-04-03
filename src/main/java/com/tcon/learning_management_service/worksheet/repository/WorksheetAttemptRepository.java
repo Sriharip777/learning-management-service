@@ -8,8 +8,15 @@ import java.util.Optional;
 
 public interface WorksheetAttemptRepository extends MongoRepository<WorksheetAttempt, String> {
 
+    // ✅ Student attempts
     List<WorksheetAttempt> findByStudentId(String studentId);
 
-    // ✅ THIS IS REQUIRED (your error is because of this missing)
-    Optional<WorksheetAttempt> findByWorksheetIdAndStudentId(String worksheetId, String studentId);
+    // ✅ One student + one worksheet (used for validation / single attempt)
+    Optional<WorksheetAttempt> findByWorksheetIdAndStudentId(
+            String worksheetId,
+            String studentId
+    );
+
+    // 🔥 NEW: All attempts for a worksheet (teacher view)
+    List<WorksheetAttempt> findByWorksheetId(String worksheetId);
 }
