@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +36,9 @@ public class WorksheetService {
     private final WorksheetMapper worksheetMapper;
     private final WorksheetValidator worksheetValidator;
     private final CourseIntegrationService courseIntegrationService;
+
+    // ✅ ADDED (for teacher assignment history)
+    private final WorksheetAssignmentRepository assignmentRepository;
 
     /*
      * =====================================
@@ -60,7 +64,7 @@ public class WorksheetService {
         worksheet.setTopicId(request.getTopicId());
         worksheet.setDuration(topic.getDuration());
         worksheet.setStatus(WorksheetStatus.DRAFT);
-        worksheet.setHasQuestions(false); // 🔥 keep
+        worksheet.setHasQuestions(false);
         worksheet.setCreatedAt(LocalDateTime.now());
 
         Worksheet saved = worksheetRepository.save(worksheet);
@@ -142,9 +146,9 @@ public class WorksheetService {
                     int correctIndex = mapCorrect(correct);
 
                     Question question = new Question();
-                    question.setWorksheetId(worksheetId); // 🔥 added
+                    question.setWorksheetId(worksheetId);
                     question.setQuestionMasterId(UUID.randomUUID().toString());
-                    question.setQuestionVersionId(UUID.randomUUID().toString()); // 🔥 improved
+                    question.setQuestionVersionId(UUID.randomUUID().toString());
                     question.setQuestionText(q);
                     question.setOptions(options);
                     question.setCorrectAnswerIndex(correctIndex);
@@ -193,7 +197,6 @@ public class WorksheetService {
 
             worksheetVersionRepository.save(version);
 
-            // 🔥 BOTH IMPORTANT
             worksheet.setHasQuestions(true);
             worksheet.setCurrentVersion(nextVersion);
             worksheet.setUpdatedAt(LocalDateTime.now());
@@ -233,6 +236,52 @@ public class WorksheetService {
      */
     public List<Worksheet> getAllWorksheets() {
         return worksheetRepository.findAll();
+    }
+
+    /*
+     * =====================================
+     * 🔥 NEW: TEACHER ASSIGNMENT HISTORY
+     * =====================================
+     */
+    public List<WorksheetSummaryResponse> getTeacherAssignmentHistory(String teacherId) {
+
+        List<WorksheetAssignment> assignments =
+                assignmentRepository.findByTeacherId(teacherId);
+
+        Map<String, List<WorksheetAssignment>> grouped =
+                assignments.stream()
+                        .collect(Collectors.groupingBy(WorksheetAssignment::getWorksheetId));
+
+        List<String> worksheetIds = new ArrayList<>(grouped.keySet());
+
+        List<Worksheet> worksheets =
+                worksheetRepository.findAllById(worksheetIds);
+
+        return worksheets.stream().map(ws -> {
+
+            WorksheetSummaryResponse response = worksheetMapper.toSummary(ws);
+
+            List<WorksheetAssignment> wsAssignments = grouped.get(ws.getId());
+
+            response.setAssignedCount(wsAssignments.size());
+
+            response.setLastAssignedAt(
+                    wsAssignments.stream()
+                            .map(WorksheetAssignment::getAssignedAt)
+                            .max(LocalDateTime::compareTo)
+                            .orElse(null)
+            );
+
+            long completedCount = wsAssignments.stream()
+                    .filter(WorksheetAssignment::isCompleted)
+                    .count();
+
+            response.setCompletedCount((int) completedCount);
+            response.setPendingCount(wsAssignments.size() - (int) completedCount);
+
+            return response;
+
+        }).toList();
     }
 
     /*

@@ -5,6 +5,7 @@ import com.tcon.learning_management_service.worksheet.dto.response.QuestionRespo
 import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
 import com.tcon.learning_management_service.worksheet.entity.WorksheetAttempt;
 import com.tcon.learning_management_service.worksheet.repository.WorksheetAttemptRepository;
 import com.tcon.learning_management_service.worksheet.service.WorksheetAttemptService;
@@ -142,5 +143,19 @@ public class WorksheetController {
             @PathVariable String worksheetId
     ) {
         return queryService.getWorksheetDetails(worksheetId);
+    }
+
+    /*
+     * =====================================
+     * 🔥 NEW: TEACHER ASSIGNMENT HISTORY
+     * =====================================
+     */
+    @GetMapping("/assigned/history")
+    public ResponseEntity<List<WorksheetSummaryResponse>> getTeacherAssignmentHistory(
+            @RequestHeader("X-User-Id") String teacherId
+    ) {
+        return ResponseEntity.ok(
+                worksheetService.getTeacherAssignmentHistory(teacherId)
+        );
     }
 }

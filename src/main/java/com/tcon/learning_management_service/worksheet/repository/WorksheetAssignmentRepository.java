@@ -8,5 +8,9 @@ import java.util.List;
 public interface WorksheetAssignmentRepository
         extends MongoRepository<WorksheetAssignment, String> {
 
+    // ✅ EXISTING (DO NOT TOUCH)
     List<WorksheetAssignment> findByStudentId(String studentId);
+
+    // ✅ ADDED (for teacher history)
+    List<WorksheetAssignment> findByTeacherId(String teacherId);
 }
