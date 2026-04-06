@@ -10,6 +10,12 @@ public class WorksheetSummaryResponse {
 
     private String subjectId;
     private String gradeId;
+    private String topicId;
+
+
+    private String SubjectName;
+    private String GradeName;
+    private String TopicName;
 
     private String status;
 }
