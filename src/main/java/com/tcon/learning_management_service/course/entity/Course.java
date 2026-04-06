@@ -38,9 +38,11 @@ public class Course {
     // NEW: master data mapping
     @Indexed
     private String gradeId;
+    private String gradeName;
 
     @Indexed
     private String subjectId;
+    private String subjectName;
 
     @Builder.Default
     private List<String> topicIds = new ArrayList<>();

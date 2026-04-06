@@ -8,21 +8,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class AssignmentEventListener {
 
-    @KafkaListener(
-            topics = "assignment-submitted",
-            groupId = "learning-management-group")
-    public void handleAssignmentSubmitted(Object event)
-    {
+    @KafkaListener(topics = "assignment-submitted", groupId = "learning-management-group")
+    public void handleAssignmentSubmitted(Object event) {
         log.info("Assignment Submitted Event Received: {}", event);
     }
 
-
-    @KafkaListener(
-            topics = "assignment-evaluated",
-            groupId = "learning-management-group")
-    public void handleAssignmentEvaluated(Object event)
-    {
+    @KafkaListener(topics = "assignment-evaluated", groupId = "learning-management-group")
+    public void handleAssignmentEvaluated(Object event) {
         log.info("Assignment Evaluated Event Received: {}", event);
     }
-
 }

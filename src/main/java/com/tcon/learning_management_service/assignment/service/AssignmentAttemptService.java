@@ -2,7 +2,7 @@ package com.tcon.learning_management_service.assignment.service;
 
 import com.tcon.learning_management_service.assignment.dto.StartAssignmentRequest;
 import com.tcon.learning_management_service.assignment.entity.Assignment;
-import com.tcon.learning_management_service.assignment.model.AssignmentAttempt;
+import com.tcon.learning_management_service.assignment.entity.AssignmentAttempt;
 import com.tcon.learning_management_service.assignment.repository.AssignmentAttemptRepository;
 import com.tcon.learning_management_service.assignment.repository.AssignmentRepository;
 import lombok.RequiredArgsConstructor;

@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.assignment.service;
 
-import com.tcon.learning_management_service.assignment.dto.QuestionAttemptRequest;
 import com.tcon.learning_management_service.assignment.dto.SubmissionRequest;
 import com.tcon.learning_management_service.assignment.entity.Answer;
 import com.tcon.learning_management_service.assignment.entity.QuestionAttempt;

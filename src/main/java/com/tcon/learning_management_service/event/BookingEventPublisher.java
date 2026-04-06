@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -17,6 +18,8 @@ public class BookingEventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private static final String TOPIC = "booking-events";
+
+    // ─── BOOKING CREATED ──────────────────────────────────────────────────────
 
     public void publishBookingCreated(Booking booking) {
         try {
@@ -31,47 +34,90 @@ public class BookingEventPublisher {
                     .build();
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
-            log.info("Published booking created event: {}", booking.getId());
+            log.info("📤 Published BOOKING_CREATED for booking: {}", booking.getId());
         } catch (Exception e) {
-            log.error("Failed to publish booking created event", e);
+            log.error("❌ Failed to publish BOOKING_CREATED", e);
         }
     }
+
+    // ─── BOOKING CONFIRMED ────────────────────────────────────────────────────
 
     public void publishBookingConfirmed(Booking booking) {
         try {
-            Map<String, Object> event = new HashMap();
-            event.put("eventType", "BOOKING_CONFIRMED");
-            event.put("bookingId", booking.getId());
-            event.put("classSessionId", booking.getSessionId());
-            event.put("teacherId", booking.getTeacherId());
-            event.put("studentId", booking.getStudentId());
-            event.put("parentId", booking.getParentId());
-            event.put("scheduledStartTime", booking.getSessionStartTime().toString());
-            event.put("scheduledEndTime", booking.getSessionEndTime().toString()); // ✅ ADD THIS
-            // ✅ Calculate duration if not set
-            Integer duration = booking.getDurationMinutes();
-            if (duration == null && booking.getSessionStartTime() != null && booking.getSessionEndTime() != null) {
-                duration = (int) java.time.temporal.ChronoUnit.MINUTES.between(
-                        booking.getSessionStartTime(),
-                        booking.getSessionEndTime()
-                );
-                log.warn("⚠️ Duration was null for booking {}, calculated: {} minutes", booking.getId(), duration);
+            // ✅ Resolve startTime and duration
+            // For direct bookings: use sessionStartTime + durationMinutes
+            // For batch bookings: use first slot in sessions array
+            LocalDateTime startTime = booking.getSessionStartTime();
+            LocalDateTime endTime   = booking.getSessionEndTime();
+            Integer duration        = booking.getDurationMinutes();
+
+            if ((startTime == null || duration == null || duration == 0)
+                    && booking.getSessions() != null
+                    && !booking.getSessions().isEmpty()) {
+
+                Booking.SessionTime first = booking.getSessions().get(0);
+                startTime = first.getStartTime();
+                endTime   = first.getEndTime();
+                duration  = (int) java.time.Duration
+                        .between(first.getStartTime(), first.getEndTime())
+                        .toMinutes();
+
+                log.info("📅 Batch booking - using first slot: {} to {}, duration: {} min",
+                        startTime, endTime, duration);
             }
-            event.put("durationMinutes", duration);
-            event.put("subject", booking.getSubject() != null ? booking.getSubject() : "One-on-One Class");
-            event.put("timestamp", java.time.Instant.now().toString());
+
+            if (startTime == null) {
+                log.error("❌ Cannot publish BOOKING_CONFIRMED - startTime is null for booking: {}",
+                        booking.getId());
+                return;
+            }
+
+            if (duration == null || duration == 0) {
+                log.error("❌ Cannot publish BOOKING_CONFIRMED - duration is 0 for booking: {}",
+                        booking.getId());
+                return;
+            }
+
+            // ✅ classSessionId = booking.getSessionId()
+            // (set during createDirectTeacherBooking or confirmBooking for batch)
+            String classSessionId = booking.getSessionId();
+            if (classSessionId == null || classSessionId.isBlank()) {
+                log.error("❌ Cannot publish BOOKING_CONFIRMED - classSessionId is null for booking: {}",
+                        booking.getId());
+                return;
+            }
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventType",          "BOOKING_CONFIRMED");
+            event.put("bookingId",          booking.getId());
+            event.put("classSessionId",     classSessionId);
+            event.put("teacherId",          booking.getTeacherId());
+            event.put("studentId",          booking.getStudentId());
+            event.put("parentId",           booking.getParentId() != null
+                    ? booking.getParentId() : "");
+            event.put("scheduledStartTime", startTime.toString());
+            event.put("scheduledEndTime",   endTime != null ? endTime.toString() : "");
+            event.put("durationMinutes",    duration);
+            event.put("subject",            booking.getSubject() != null
+                    ? booking.getSubject() : "One-on-One Class");
+            event.put("timestamp",          java.time.Instant.now().toString());
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
-            log.info("✅ Published BOOKING_CONFIRMED event for booking: {}", booking.getId());
-            log.debug("Event data: {}", event);
+
+            log.info("✅ Published BOOKING_CONFIRMED for booking: {}", booking.getId());
+            log.info("   classSessionId : {}", classSessionId);
+            log.info("   teacherId      : {}", booking.getTeacherId());
+            log.info("   studentId      : {}", booking.getStudentId());
+            log.info("   startTime      : {}", startTime);
+            log.info("   durationMinutes: {}", duration);
 
         } catch (Exception e) {
-            log.error("Failed to publish booking confirmed event", e);
+            log.error("❌ Failed to publish BOOKING_CONFIRMED", e);
         }
     }
 
+    // ─── BOOKING APPROVED ─────────────────────────────────────────────────────
 
-    // ✅ ADD THIS METHOD
     public void publishBookingApproved(Booking booking) {
         try {
             BookingEvent event = BookingEvent.builder()
@@ -85,13 +131,14 @@ public class BookingEventPublisher {
                     .build();
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
-            log.info("Published booking approved event: {}", booking.getId());
+            log.info("📤 Published BOOKING_APPROVED for booking: {}", booking.getId());
         } catch (Exception e) {
-            log.error("Failed to publish booking approved event", e);
+            log.error("❌ Failed to publish BOOKING_APPROVED", e);
         }
     }
 
-    // ✅ ADD THIS METHOD
+    // ─── BOOKING REJECTED ─────────────────────────────────────────────────────
+
     public void publishBookingRejected(Booking booking) {
         try {
             BookingEvent event = BookingEvent.builder()
@@ -105,11 +152,13 @@ public class BookingEventPublisher {
                     .build();
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
-            log.info("Published booking rejected event: {}", booking.getId());
+            log.info("📤 Published BOOKING_REJECTED for booking: {}", booking.getId());
         } catch (Exception e) {
-            log.error("Failed to publish booking rejected event", e);
+            log.error("❌ Failed to publish BOOKING_REJECTED", e);
         }
     }
+
+    // ─── BOOKING CANCELLED ────────────────────────────────────────────────────
 
     public void publishBookingCancelled(Booking booking) {
         try {
@@ -125,11 +174,13 @@ public class BookingEventPublisher {
                     .build();
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
-            log.info("Published booking cancelled event: {}", booking.getId());
+            log.info("📤 Published BOOKING_CANCELLED for booking: {}", booking.getId());
         } catch (Exception e) {
-            log.error("Failed to publish booking cancelled event", e);
+            log.error("❌ Failed to publish BOOKING_CANCELLED", e);
         }
     }
+
+    // ─── EVENT DTO ────────────────────────────────────────────────────────────
 
     @lombok.Data
     @lombok.Builder
@@ -143,7 +194,7 @@ public class BookingEventPublisher {
         private String teacherId;
         private LocalDateTime sessionStartTime;
         private String cancellationReason;
-        private java.math.BigDecimal refundAmount;
+        private BigDecimal refundAmount;
         private LocalDateTime timestamp;
     }
 }

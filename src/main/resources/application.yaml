@@ -16,9 +16,6 @@ spring:
       database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
 
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -35,6 +32,9 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
+    topics:
+      booking-events: booking-events
+      session-events: session-events
 
 eureka:
   client:

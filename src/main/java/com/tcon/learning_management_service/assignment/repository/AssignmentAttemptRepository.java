@@ -1,6 +1,6 @@
 package com.tcon.learning_management_service.assignment.repository;
 
-import com.tcon.learning_management_service.assignment.model.AssignmentAttempt;
+import com.tcon.learning_management_service.assignment.entity.AssignmentAttempt; // ✅ was: assignment.model
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.Optional;
