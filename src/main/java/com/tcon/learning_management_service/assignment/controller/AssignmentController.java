@@ -9,14 +9,12 @@ import com.tcon.learning_management_service.assignment.service.AssignmentService
 import com.tcon.learning_management_service.assignment.service.SubmissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/assignments")
 @RequiredArgsConstructor
 public class AssignmentController {
-
     private final AssignmentService assignmentService;
     private final SubmissionService submissionService;
 
@@ -67,12 +65,12 @@ public class AssignmentController {
     /**
      * ✅ UPDATED: Parent can view their child's assignment results (SECURED)
      */
+
     @GetMapping("/parent/student/{studentId}/results")
     public List<Submission> getStudentResultsForParent(
             @PathVariable String studentId,
             @RequestHeader("X-User-Id") String parentId,
             @RequestHeader("X-User-Role") String role) {
-
         return submissionService.getResultsForParent(parentId, studentId, role);
     }
 }

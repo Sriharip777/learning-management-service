@@ -11,8 +11,11 @@ import com.tcon.learning_management_service.session.entity.SessionParticipant;
 import com.tcon.learning_management_service.session.repository.ClassSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,14 +32,41 @@ public class ClassSessionService {
 
     @Transactional
     public SessionDto scheduleSession(String teacherId, SessionScheduleRequest request) {
-        log.info("Scheduling session for course: {} by teacher: {}", request.getCourseId(), teacherId);
+        log.info("Scheduling session for course: {} by teacher: {}",
+                request != null ? request.getCourseId() : null, teacherId);
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session request is required");
+        }
+
+        if (request.getCourseId() == null || request.getCourseId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Course id is required");
+        }
+
+        if (request.getScheduledStartTime() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Scheduled start time is required");
+        }
+
+        if (request.getDurationMinutes() == null || request.getDurationMinutes() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duration must be greater than zero");
+        }
 
         // Validate course exists and teacher owns it
         Course course = courseRepository.findById(request.getCourseId())
-                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + request.getCourseId()));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Course not found: " + request.getCourseId()
+                ));
 
         if (!course.getTeacherId().equals(teacherId)) {
-            throw new IllegalArgumentException("Unauthorized: Teacher does not own this course");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Unauthorized: Teacher does not own this course"
+            );
         }
 
         // Calculate end time
@@ -51,7 +81,10 @@ public class ClassSessionService {
         );
 
         if (!conflicts.isEmpty()) {
-            throw new IllegalArgumentException("Session conflicts with existing sessions");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Session conflicts with existing sessions"
+            );
         }
 
         ClassSession session = ClassSession.builder()
@@ -89,24 +122,51 @@ public class ClassSessionService {
     }
 
     public SessionDto getSession(String sessionId) {
+        log.info("Fetching session: {}", sessionId);
+
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
         return toDto(session);
     }
 
     public List<SessionDto> getCourseSessions(String courseId) {
+        log.info("Fetching sessions for course: {}", courseId);
+
+        if (courseId == null || courseId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Course id is required");
+        }
+
         return sessionRepository.findByCourseId(courseId).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<SessionDto> getTeacherSessions(String teacherId) {
+        log.info("Fetching sessions for teacher: {}", teacherId);
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
         return sessionRepository.findByTeacherId(teacherId).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<SessionDto> getStudentSessions(String studentId) {
+        log.info("Fetching sessions for student: {}", studentId);
+
+        if (studentId == null || studentId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student id is required");
+        }
+
         return sessionRepository.findByStudentId(studentId).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
@@ -114,6 +174,20 @@ public class ClassSessionService {
 
     public List<SessionDto> getTeacherSessionsInDateRange(
             String teacherId, LocalDateTime start, LocalDateTime end) {
+        log.info("Fetching sessions for teacher {} from {} to {}", teacherId, start, end);
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
+        if (start == null || end == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Start and end time are required");
+        }
+
+        if (end.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "End time must be after start time");
+        }
+
         return sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(teacherId, start, end)
                 .stream()
                 .map(this::toDto)
@@ -124,15 +198,32 @@ public class ClassSessionService {
     public SessionDto startSession(String sessionId, String teacherId) {
         log.info("Starting session: {}", sessionId);
 
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.getTeacherId().equals(teacherId)) {
-            throw new IllegalArgumentException("Unauthorized: Teacher does not own this session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Unauthorized: Teacher does not own this session"
+            );
         }
 
         if (session.getStatus() != ClassStatus.SCHEDULED) {
-            throw new IllegalArgumentException("Session is not in scheduled state");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Session is not in scheduled state"
+            );
         }
 
         session.setStatus(ClassStatus.IN_PROGRESS);
@@ -151,20 +242,37 @@ public class ClassSessionService {
     public SessionDto completeSession(String sessionId, String teacherId, String notes) {
         log.info("Completing session: {}", sessionId);
 
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.getTeacherId().equals(teacherId)) {
-            throw new IllegalArgumentException("Unauthorized: Teacher does not own this session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Unauthorized: Teacher does not own this session"
+            );
         }
 
         if (session.getStatus() != ClassStatus.IN_PROGRESS) {
-            throw new IllegalArgumentException("Session is not in progress");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Session is not in progress"
+            );
         }
 
         session.setStatus(ClassStatus.COMPLETED);
         session.setActualEndTime(LocalDateTime.now());
-        if (notes != null) {
+        if (notes != null && !notes.isBlank()) {
             session.setNotes(notes);
         }
 
@@ -181,15 +289,32 @@ public class ClassSessionService {
     public SessionDto cancelSession(String sessionId, String teacherId, String reason) {
         log.info("Cancelling session: {}", sessionId);
 
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.getTeacherId().equals(teacherId)) {
-            throw new IllegalArgumentException("Unauthorized: Teacher does not own this session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Unauthorized: Teacher does not own this session"
+            );
         }
 
         if (session.getStatus() == ClassStatus.COMPLETED) {
-            throw new IllegalArgumentException("Cannot cancel completed session");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot cancel completed session"
+            );
         }
 
         session.setStatus(ClassStatus.CANCELLED);
@@ -211,12 +336,27 @@ public class ClassSessionService {
                                             String studentName, String studentEmail, boolean attended) {
         log.info("Marking attendance for student {} in session {}: {}", studentId, sessionId, attended);
 
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
+        if (studentId == null || studentId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student id is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
+
+        if (session.getParticipants() == null) {
+            session.setParticipants(new ArrayList<>());
+        }
 
         // Find or create participant
         SessionParticipant participant = session.getParticipants().stream()
-                .filter(p -> p.getStudentId().equals(studentId))
+                .filter(p -> studentId.equals(p.getStudentId()))
                 .findFirst()
                 .orElse(SessionParticipant.builder()
                         .studentId(studentId)
@@ -230,7 +370,7 @@ public class ClassSessionService {
         }
 
         // Update or add participant
-        session.getParticipants().removeIf(p -> p.getStudentId().equals(studentId));
+        session.getParticipants().removeIf(p -> studentId.equals(p.getStudentId()));
         session.getParticipants().add(participant);
 
         // Update attended count
@@ -247,11 +387,31 @@ public class ClassSessionService {
 
     @Transactional
     public SessionDto addRecording(String sessionId, String teacherId, String recordingUrl) {
+        log.info("Adding recording to session: {}", sessionId);
+
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session id is required");
+        }
+
+        if (teacherId == null || teacherId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Teacher id is required");
+        }
+
+        if (recordingUrl == null || recordingUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Recording URL is required");
+        }
+
         ClassSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.getTeacherId().equals(teacherId)) {
-            throw new IllegalArgumentException("Unauthorized: Teacher does not own this session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Unauthorized: Teacher does not own this session"
+            );
         }
 
         session.setRecordingUrl(recordingUrl);
