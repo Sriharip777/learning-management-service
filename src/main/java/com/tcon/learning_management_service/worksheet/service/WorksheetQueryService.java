@@ -29,7 +29,7 @@ public class WorksheetQueryService {
 
     /*
      * ======================================
-     * TEACHER VIEW (GRADE + SUBJECT + TOPIC)
+     * TEACHER VIEW (SHOW ALL PUBLISHED)
      * ======================================
      */
     public List<WorksheetSummaryResponse> getPublishedWorksheets(
@@ -56,6 +56,7 @@ public class WorksheetQueryService {
                     );
         }
 
+        // ✅ NO reviewStatus filter here (IMPORTANT)
         return worksheets.stream()
                 .map(mapper::toSummary)
                 .collect(Collectors.toList());
@@ -69,7 +70,7 @@ public class WorksheetQueryService {
     public WorksheetDetailResponse getWorksheetDetails(String worksheetId) {
 
         Worksheet worksheet = worksheetRepository.findById(worksheetId)
-                .orElse(null);
+                .orElseThrow(() -> new RuntimeException("Worksheet not found"));
 
         validator.validateWorksheetExists(worksheet);
 
@@ -78,7 +79,7 @@ public class WorksheetQueryService {
                         worksheetId,
                         worksheet.getCurrentVersion()
                 )
-                .orElse(null);
+                .orElseThrow(() -> new RuntimeException("Version not found"));
 
         validator.validateVersionExists(version);
 
@@ -105,7 +106,7 @@ public class WorksheetQueryService {
 
     /*
      * ======================================
-     * FILTERED WORKSHEETS DETAILS
+     * FILTERED WORKSHEET DETAILS
      * ======================================
      */
     public List<WorksheetDetailResponse> getPublishedWorksheetDetails(
@@ -139,7 +140,7 @@ public class WorksheetQueryService {
                                     w.getId(),
                                     w.getCurrentVersion()
                             )
-                            .orElse(null);
+                            .orElseThrow(() -> new RuntimeException("Version not found"));
 
                     validator.validateVersionExists(version);
 
@@ -150,7 +151,7 @@ public class WorksheetQueryService {
 
     /*
      * ======================================
-     * 🔥 NEW: LATEST WORKSHEETS
+     * LATEST WORKSHEETS (SHOW ALL PUBLISHED)
      * ======================================
      */
     public List<WorksheetSummaryResponse> getLatestPublishedWorksheets() {
