@@ -32,14 +32,35 @@ public class WorksheetStudentController {
 
     /*
      * =====================================
+     * 🔥 START WORKSHEET (NEW)
+     * =====================================
+     */
+    @PostMapping("/{worksheetId}/start")
+    public String startWorksheet(
+            @PathVariable String worksheetId,
+            @RequestHeader("X-User-Id") String studentId
+    ) {
+        System.out.println("🔥 START WORKSHEET");
+        System.out.println("Worksheet ID: " + worksheetId);
+        System.out.println("Student ID: " + studentId);
+
+        // Optional: validate assignment
+        studentService.startWorksheet(worksheetId, studentId);
+
+        return "Worksheet started successfully";
+    }
+
+    /*
+     * =====================================
      * GET QUESTIONS (SHUFFLED)
      * =====================================
      */
     @GetMapping("/{worksheetId}/questions")
     public List<StudentQuestionResponse> getQuestions(
-            @PathVariable String worksheetId
+            @PathVariable String worksheetId,
+            @RequestHeader("X-User-Id") String studentId
     ) {
-        return studentService.getShuffledQuestions(worksheetId);
+        return studentService.getShuffledQuestions(worksheetId, studentId);
     }
 
     /*
@@ -49,8 +70,22 @@ public class WorksheetStudentController {
      */
     @PostMapping("/submit")
     public WorksheetResultResponse submitWorksheet(
-            @RequestBody SubmitWorksheetRequest request
+            @RequestBody SubmitWorksheetRequest request,
+            @RequestHeader("X-User-Id") String studentId
     ) {
-        return studentService.submitWorksheet(request);
+        return studentService.submitWorksheet(request, studentId);
+    }
+
+    /*
+     * =====================================
+     * 🔥 GET RESULT (NEW)
+     * =====================================
+     */
+    @GetMapping("/{worksheetId}/result")
+    public WorksheetResultResponse getResult(
+            @PathVariable String worksheetId,
+            @RequestHeader("X-User-Id") String studentId
+    ) {
+        return studentService.getResult(worksheetId, studentId);
     }
 }
