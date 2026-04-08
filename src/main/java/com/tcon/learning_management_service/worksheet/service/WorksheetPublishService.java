@@ -56,25 +56,16 @@ public class WorksheetPublishService {
         // ✅ ensure flag is correct
         worksheet.setHasQuestions(true);
 
-        // 🔥 FIX: Allow republish if FLAGGED
+        // ❗ Prevent publishing flagged worksheets
         if (worksheet.getReviewStatus() != null &&
                 worksheet.getReviewStatus().name().equals("FLAGGED")) {
 
-            worksheet.setReviewStatus(
-                    com.tcon.learning_management_service.worksheet.entity.ReviewStatus.APPROVED
-            );
+            throw new RuntimeException("Cannot publish flagged worksheet. Resolve issues first.");
         }
 
         // 🔥 EXTRA SAFETY
         if (version.getQuestionCount() == null || version.getQuestionCount() == 0) {
             throw new RuntimeException("Worksheet version has no questions");
-        }
-
-        // 🔥 VALIDATION
-        if (worksheet.getReviewStatus() == null ||
-                !worksheet.getReviewStatus().name().equals("APPROVED")) {
-
-            validator.validatePublishable(version);
         }
 
         // 3️⃣ Lock Version
@@ -88,17 +79,6 @@ public class WorksheetPublishService {
         worksheet.setCurrentVersion(version.getVersionNumber());
         worksheet.setStatus(WorksheetStatus.PUBLISHED);
         worksheet.setUpdatedAt(LocalDateTime.now());
-
-        // 🔥 Maintain review lifecycle
-        if (worksheet.getReviewStatus() == null) {
-            worksheet.setReviewStatus(
-                    com.tcon.learning_management_service.worksheet.entity.ReviewStatus.PENDING
-            );
-        }
-
-        worksheet.setReviewedBy(null);
-        worksheet.setReviewComments(null);
-        worksheet.setReviewedAt(null);
 
         worksheetRepository.save(worksheet);
 
