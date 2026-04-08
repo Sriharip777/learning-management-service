@@ -135,14 +135,18 @@ public class WorksheetController {
 
     /*
      * =====================================
-     * 🔥 NEW: PREVIEW WORKSHEET
+     * 🔥 UPDATED: PREVIEW WORKSHEET (FIXED)
      * =====================================
      */
     @GetMapping("/{worksheetId}/preview")
     public WorksheetDetailResponse previewWorksheet(
             @PathVariable String worksheetId
     ) {
-        return queryService.getWorksheetDetails(worksheetId);
+        try {
+            return queryService.getWorksheetDetails(worksheetId);
+        } catch (Exception e) {
+            throw new RuntimeException("Preview failed: " + e.getMessage());
+        }
     }
 
     /*
@@ -157,5 +161,18 @@ public class WorksheetController {
         return ResponseEntity.ok(
                 worksheetService.getTeacherAssignmentHistory(teacherId)
         );
+    }
+    /*
+     * =====================================
+     * 🔥 NEW: UPDATE QUESTIONS (ADMIN EDIT)
+     * =====================================
+     */
+    @PostMapping("/{worksheetId}/update-questions")
+    public ResponseEntity<Void> updateQuestions(
+            @PathVariable String worksheetId,
+            @RequestBody List<com.tcon.learning_management_service.worksheet.dto.request.QuestionUpdateRequest> questions
+    ) {
+        worksheetService.updateQuestions(worksheetId, questions);
+        return ResponseEntity.ok().build();
     }
 }

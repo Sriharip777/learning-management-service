@@ -64,7 +64,7 @@ public class WorksheetTeacherService {
 
     /*
      * ======================================
-     * 🔥 FLAG QUESTIONS (FINAL)
+     * 🔥 FLAG QUESTIONS (UPDATED ✅)
      * ======================================
      */
     public void flagQuestions(String worksheetId,
@@ -87,7 +87,7 @@ public class WorksheetTeacherService {
             throw new RuntimeException("Only published worksheets can be flagged");
         }
 
-        // Set metadata for each flagged question
+        // ✅ EXISTING LOGIC
         for (QuestionFlag flag : flags) {
             flag.setFlaggedBy(teacherId);
             flag.setFlaggedAt(LocalDateTime.now());
@@ -96,7 +96,18 @@ public class WorksheetTeacherService {
         version.setFlaggedQuestions(flags);
         versionRepository.save(version);
 
-        // 🔥 FIXED: publish FLAG event instead of rejected
+        // 🔥🔥🔥 MAIN FIX (ADDED)
+        Worksheet worksheet = worksheetRepository
+                .findById(worksheetId)
+                .orElseThrow(() -> new RuntimeException("Worksheet not found"));
+
+        worksheet.setStatus(WorksheetStatus.DRAFT);
+        worksheet.setReviewStatus(ReviewStatus.FLAGGED);
+        worksheet.setUpdatedAt(LocalDateTime.now());
+
+        worksheetRepository.save(worksheet);
+
+        // ✅ EXISTING EVENT
         eventPublisher.publishQuestionsFlagged(
                 worksheetId,
                 teacherId,
@@ -190,7 +201,7 @@ public class WorksheetTeacherService {
                         ReviewStatus.PENDING
                 );
 
-        List<WorksheetSummaryResponse> result = worksheets.stream()
+        return worksheets.stream()
                 .filter(w ->
                         w.getSubjectId().equals(subjectId) &&
                                 w.getGradeId().equals(gradeId) &&
@@ -198,10 +209,6 @@ public class WorksheetTeacherService {
                 )
                 .map(worksheetMapper::toSummary)
                 .toList();
-
-        log.info("Found {} pending review worksheets", result.size());
-
-        return result;
     }
 
     /*
@@ -216,8 +223,7 @@ public class WorksheetTeacherService {
             ReviewStatus reviewStatus
     ) {
 
-        log.info("Fetching worksheets by review status: subjectId={}, gradeId={}, topicId={}, reviewStatus={}",
-                subjectId, gradeId, topicId, reviewStatus);
+        log.info("Fetching worksheets by review status: {}", reviewStatus);
 
         List<Worksheet> worksheets =
                 worksheetRepository.findByStatusAndReviewStatus(
@@ -225,7 +231,7 @@ public class WorksheetTeacherService {
                         reviewStatus
                 );
 
-        List<WorksheetSummaryResponse> result = worksheets.stream()
+        return worksheets.stream()
                 .filter(w ->
                         w.getSubjectId().equals(subjectId) &&
                                 w.getGradeId().equals(gradeId) &&
@@ -233,21 +239,14 @@ public class WorksheetTeacherService {
                 )
                 .map(worksheetMapper::toSummary)
                 .toList();
-
-        log.info("Found {} worksheets with review status={}", result.size(), reviewStatus);
-
-        return result;
     }
 
     /*
      * ======================================
-     * 🔥 ADDED: SAFE ASSIGN (DUPLICATE PREVENTION)
+     * 🔥 SAFE ASSIGN
      * ======================================
      */
     public void assignWorksheetSafe(AssignWorksheetRequest request) {
-
-        log.info("Safe assign (duplicate protected): worksheetId={}, teacherId={}",
-                request.getWorksheetId(), request.getTeacherId());
 
         validateWorksheetBeforeAssign(request.getWorksheetId());
 
@@ -258,10 +257,7 @@ public class WorksheetTeacherService {
                     .stream()
                     .anyMatch(a -> a.getWorksheetId().equals(request.getWorksheetId()));
 
-            if (alreadyAssigned) {
-                log.warn("⚠️ Already assigned to student: {}", studentId);
-                continue;
-            }
+            if (alreadyAssigned) continue;
 
             WorksheetAssignment assignment = new WorksheetAssignment();
             assignment.setWorksheetId(request.getWorksheetId());
@@ -272,8 +268,6 @@ public class WorksheetTeacherService {
             assignment.setCompleted(false);
 
             assignmentRepository.save(assignment);
-
-            log.info("✅ Safely assigned to student: {}", studentId);
         }
     }
 }

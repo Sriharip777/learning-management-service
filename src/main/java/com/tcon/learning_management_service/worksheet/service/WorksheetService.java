@@ -1,9 +1,11 @@
 package com.tcon.learning_management_service.worksheet.service;
 
 import com.tcon.learning_management_service.worksheet.dto.request.CreateWorksheetRequest;
+import com.tcon.learning_management_service.worksheet.dto.request.QuestionUpdateRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.UpdateWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.response.ErrorRow;
 import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
 import com.tcon.learning_management_service.worksheet.entity.*;
@@ -284,6 +286,85 @@ public class WorksheetService {
         }).toList();
     }
 
+    public void updateQuestions(String worksheetId, List<QuestionUpdateRequest> updatedQuestions) {
+
+        for (QuestionUpdateRequest req : updatedQuestions) {
+
+            Question q = questionRepository
+                    .findByQuestionMasterIdAndQuestionVersionId(
+                            req.getQuestionMasterId(),
+                            req.getQuestionVersionId()
+                    )
+                    .orElseThrow(() -> new RuntimeException("Question not found"));
+
+            q.setQuestionText(req.getQuestionText());
+            q.setOptions(req.getOptions());
+            q.setReason(req.getReason());
+
+            questionRepository.save(q);
+        }
+    }
+
+    /*
+     * =====================================
+     * PREVIEW WORKSHEET (ADD THIS METHOD)
+     * =====================================
+     */
+    public WorksheetDetailResponse getWorksheetPreview(String worksheetId) {
+
+        // 1️⃣ Fetch worksheet
+        Worksheet worksheet = worksheetRepository
+                .findById(worksheetId)
+                .orElseThrow(() -> new RuntimeException("Worksheet not found"));
+
+        // 2️⃣ Fetch latest version
+        WorksheetVersion version = worksheetVersionRepository
+                .findTopByWorksheetIdOrderByVersionNumberDesc(worksheetId)
+                .orElseThrow(() -> new RuntimeException("No version found"));
+
+        if (version.getQuestions() == null || version.getQuestions().isEmpty()) {
+            throw new RuntimeException("No questions found in version");
+        }
+
+        // 3️⃣ Fetch actual questions using version refs
+        List<WorksheetDetailResponse.QuestionResponse> questionResponses =
+                version.getQuestions().stream().map(ref -> {
+
+                            Question q = questionRepository
+                                    .findByQuestionMasterIdAndQuestionVersionId(
+                                            ref.getQuestionMasterId(),
+                                            ref.getQuestionVersionId()
+                                    )
+                                    .orElseThrow(() -> new RuntimeException("Question not found"));
+
+                            WorksheetDetailResponse.QuestionResponse qr =
+                                    new WorksheetDetailResponse.QuestionResponse();
+
+                            qr.setQuestionMasterId(q.getQuestionMasterId());
+                            qr.setQuestionVersionId(q.getQuestionVersionId());
+                            qr.setQuestionText(q.getQuestionText());
+                            qr.setOptions(q.getOptions());
+                            qr.setReason(q.getReason());
+
+                            // ✅ IMPORTANT: use version data
+                            qr.setOrderIndex(ref.getOrderIndex());
+                            qr.setMarks(ref.getMarks());
+
+                            return qr;
+
+                        }).sorted(Comparator.comparing(WorksheetDetailResponse.QuestionResponse::getOrderIndex))
+                        .toList();
+
+        // 4️⃣ Build response
+        WorksheetDetailResponse response = new WorksheetDetailResponse();
+
+        response.setWorksheetId(worksheet.getId());
+        response.setTitle(worksheet.getTitle());
+        response.setVersion(version.getVersionNumber());
+        response.setQuestions(questionResponses);
+
+        return response;
+    }
     /*
      * =====================================
      * HELPERS
