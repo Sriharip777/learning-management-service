@@ -1,10 +1,12 @@
 package com.tcon.learning_management_service.assignment.controller;
 
 import com.tcon.learning_management_service.assignment.dto.QuestionCreateRequest;
+import com.tcon.learning_management_service.assignment.dto.response.UploadResponse;
 import com.tcon.learning_management_service.assignment.entity.Question;
 import com.tcon.learning_management_service.assignment.service.QuestionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -16,12 +18,25 @@ public class QuestionController {
     private final QuestionService questionService;
 
     /**
-     * Teacher creates question
+     * ✅ FIXED: Teacher creates question (manual)
      */
     @PostMapping
     public Question createQuestion(
             @RequestBody QuestionCreateRequest request) {
+
         return questionService.createQuestion(request);
+    }
+
+
+    /**
+     * ✅ Upload questions via Excel
+     */
+    @PostMapping("/upload")
+    public UploadResponse uploadQuestions(
+            @RequestParam String teacherId,
+            @RequestParam("file") MultipartFile file) {
+
+        return questionService.uploadQuestionsFromExcel(teacherId, file);
     }
 
     /**

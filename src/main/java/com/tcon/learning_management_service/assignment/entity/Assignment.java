@@ -38,4 +38,6 @@ public class Assignment {
     private LocalDateTime dueDate;
 
     private AssignmentStatus status;
+
+    private String createdByRole; // ADMIN / TEACHER
 }

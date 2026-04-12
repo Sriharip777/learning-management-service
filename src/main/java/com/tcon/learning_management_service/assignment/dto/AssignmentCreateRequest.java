@@ -25,4 +25,6 @@ public class AssignmentCreateRequest {
 
     // Assignment deadline
     private LocalDateTime dueDate;
+
+    private String createdByRole; // ADMIN / TEACHER
 }

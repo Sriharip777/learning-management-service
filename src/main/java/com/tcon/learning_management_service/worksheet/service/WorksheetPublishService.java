@@ -1,5 +1,6 @@
 package com.tcon.learning_management_service.worksheet.service;
 
+import com.tcon.learning_management_service.worksheet.entity.Question;
 import com.tcon.learning_management_service.worksheet.entity.Worksheet;
 import com.tcon.learning_management_service.worksheet.entity.WorksheetStatus;
 import com.tcon.learning_management_service.worksheet.entity.WorksheetVersion;
@@ -7,11 +8,13 @@ import com.tcon.learning_management_service.worksheet.event.WorksheetEventPublis
 import com.tcon.learning_management_service.worksheet.repository.WorksheetRepository;
 import com.tcon.learning_management_service.worksheet.repository.WorksheetVersionRepository;
 import com.tcon.learning_management_service.worksheet.validation.WorksheetValidator;
+import com.tcon.learning_management_service.worksheet.repository.QuestionRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class WorksheetPublishService {
     private final WorksheetValidator validator;
     private final WorksheetVersionService versionService;
     private final WorksheetEventPublisher eventPublisher;
+    private final QuestionRepository questionRepository;
 
     /*
      * ======================================
@@ -37,52 +41,48 @@ public class WorksheetPublishService {
 
         validator.validateWorksheetExists(worksheet);
 
-        // 🔥 NEW: VALIDATE QUESTIONS EXIST
-        if (worksheet.getHasQuestions() == null || !worksheet.getHasQuestions()) {
-            throw new RuntimeException("Cannot publish worksheet without uploading questions");
-        }
-
-        // 2️⃣ Fetch Latest Version
+        // 2️⃣ Fetch Latest Version (ONLY ONCE ✅)
         WorksheetVersion version = versionRepository
                 .findTopByWorksheetIdOrderByVersionNumberDesc(worksheetId)
                 .orElseThrow(() -> new RuntimeException("Worksheet version not found"));
 
         validator.validateVersionExists(version);
 
+        // 🔥 FIX: Validate using version question refs
+        if (version.getQuestions() == null || version.getQuestions().isEmpty()) {
+            throw new RuntimeException("Cannot publish worksheet without questions");
+        }
+
+        // ✅ ensure flag is correct
+        worksheet.setHasQuestions(true);
+
+        // ❗ Prevent publishing flagged worksheets
+        if (worksheet.getReviewStatus() != null &&
+                worksheet.getReviewStatus().name().equals("FLAGGED")) {
+
+            throw new RuntimeException("Cannot publish flagged worksheet. Resolve issues first.");
+        }
+
         // 🔥 EXTRA SAFETY
         if (version.getQuestionCount() == null || version.getQuestionCount() == 0) {
             throw new RuntimeException("Worksheet version has no questions");
         }
 
-        // 3️⃣ Validate publish rules
-        validator.validatePublishable(version);
-
-        // 4️⃣ Lock Version
+        // 3️⃣ Lock Version
         version.setStatus(WorksheetStatus.PUBLISHED);
         version.setPublishedAt(LocalDateTime.now());
 
         versionService.lockPublishedVersion(version);
         versionRepository.save(version);
 
-        // 5️⃣ Update Worksheet Pointer
+        // 4️⃣ Update Worksheet Pointer
         worksheet.setCurrentVersion(version.getVersionNumber());
         worksheet.setStatus(WorksheetStatus.PUBLISHED);
         worksheet.setUpdatedAt(LocalDateTime.now());
 
-        // 🔥 Initialize Review Flow
-        worksheet.setReviewStatus(
-                worksheet.getReviewStatus() == null
-                        ? com.tcon.learning_management_service.worksheet.entity.ReviewStatus.PENDING
-                        : worksheet.getReviewStatus()
-        );
-
-        worksheet.setReviewedBy(null);
-        worksheet.setReviewComments(null);
-        worksheet.setReviewedAt(null);
-
         worksheetRepository.save(worksheet);
 
-        // 6️⃣ Emit Event
+        // 5️⃣ Emit Event
         eventPublisher.publishWorksheetPublished(
                 worksheet.getId(),
                 version.getVersionNumber(),

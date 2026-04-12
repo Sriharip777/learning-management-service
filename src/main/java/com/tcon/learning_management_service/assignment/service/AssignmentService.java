@@ -20,7 +20,7 @@ public class AssignmentService {
     private final AssignmentValidator assignmentValidator;
 
     /**
-     * Teacher creates assignment
+     * Teacher / Admin creates assignment
      */
     public Assignment createAssignment(AssignmentCreateRequest request) {
 
@@ -31,7 +31,12 @@ public class AssignmentService {
 
         assignment.setTitle(request.getTitle());
         assignment.setDescription(request.getDescription());
+
+        // ✅ EXISTING (DO NOT REMOVE)
         assignment.setTeacherId(request.getTeacherId());
+
+        // ✅ NEW: Who created (ADMIN / TEACHER)
+        assignment.setCreatedByRole(request.getCreatedByRole());
 
         // Curriculum hierarchy
         assignment.setGradeId(request.getGradeId());
@@ -51,7 +56,22 @@ public class AssignmentService {
     }
 
     /**
-     * Assign students to assignment
+     * ✅ NEW: Admin assigns assignment to teacher
+     */
+    public Assignment assignToTeacher(String assignmentId, String teacherId) {
+
+        Assignment assignment = assignmentRepository.findById(assignmentId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Assignment not found: " + assignmentId));
+
+        assignment.setTeacherId(teacherId);
+
+        return assignmentRepository.save(assignment);
+    }
+
+    /**
+     * Assign students to assignment (Teacher flow)
      */
     public Assignment assignStudents(String assignmentId,
                                      AssignStudentsRequest request) {
@@ -64,6 +84,8 @@ public class AssignmentService {
         assignmentValidator.validateStudentAssignment(request);
 
         assignment.setStudentIds(request.getStudentIds());
+
+        // ✅ keep existing logic
         assignment.setStatus(AssignmentStatus.ACTIVE);
 
         return assignmentRepository.save(assignment);

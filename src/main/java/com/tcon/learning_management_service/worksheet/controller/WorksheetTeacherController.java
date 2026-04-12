@@ -64,24 +64,6 @@ public class WorksheetTeacherController {
 
     /*
      * =====================================
-     * 🔥 APPROVE WORKSHEET
-     * =====================================
-     */
-    @PostMapping("/{worksheetId}/approve")
-    public String approveWorksheet(
-            @PathVariable String worksheetId,
-            @RequestHeader("X-User-Id") String teacherId
-    ) {
-        if (teacherId == null || teacherId.isBlank()) {
-            throw new RuntimeException("Teacher ID is required");
-        }
-
-        teacherService.approveWorksheet(worksheetId, teacherId);
-        return "Worksheet approved successfully";
-    }
-
-    /*
-     * =====================================
      * 🔥 FLAG QUESTIONS
      * =====================================
      */
