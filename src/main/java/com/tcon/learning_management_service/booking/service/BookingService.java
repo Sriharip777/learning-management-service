@@ -1,5 +1,3 @@
-// src/main/java/com/tcon/learning_management_service/booking/service/BookingService.java
-
 package com.tcon.learning_management_service.booking.service;
 
 import com.tcon.learning_management_service.booking.dto.BatchBookingRequest;
@@ -9,10 +7,14 @@ import com.tcon.learning_management_service.booking.entity.Booking;
 import com.tcon.learning_management_service.booking.entity.BookingStatus;
 import com.tcon.learning_management_service.booking.entity.CancellationPolicy;
 import com.tcon.learning_management_service.booking.repository.BookingRepository;
+import com.tcon.learning_management_service.demo.service.DemoLimitService;
 import com.tcon.learning_management_service.event.BookingEventPublisher;
 import com.tcon.learning_management_service.session.entity.ClassSession;
 import com.tcon.learning_management_service.session.entity.ClassStatus;
 import com.tcon.learning_management_service.session.repository.ClassSessionRepository;
+import com.tcon.learning_management_service.client.VideoServiceClient;
+import com.tcon.learning_management_service.client.dto.VideoSessionCreateRequest;
+import com.tcon.learning_management_service.client.dto.VideoSessionCreateResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,8 @@ public class BookingService {
     private final ClassSessionRepository sessionRepository;
     private final BookingEventPublisher eventPublisher;
     private final BookingLockService lockService;
+    private final DemoLimitService demoLimitService;
+    private final VideoServiceClient videoServiceClient;
 
     // ==================== CREATE BOOKING ====================
 
@@ -104,6 +108,17 @@ public class BookingService {
                 throw new IllegalArgumentException("Session is full");
             }
 
+            // ✅ FREE DEMO: try to consume one here
+            boolean isFreeDemo = false;
+            try {
+                demoLimitService.consumeFreeDemo(studentId);
+                isFreeDemo = true;
+                log.info("Using free demo for student {} on session {}", studentId, request.getSessionId());
+            } catch (Exception ex) {
+                log.info("No free demo available for student {}: {}", studentId, ex.getMessage());
+                isFreeDemo = false;
+            }
+
             // Create booking
             Booking booking = Booking.builder()
                     .sessionId(request.getSessionId())
@@ -115,7 +130,9 @@ public class BookingService {
                     .status(BookingStatus.PENDING)
                     .sessionStartTime(session.getScheduledStartTime())
                     .sessionEndTime(session.getScheduledEndTime())
-                    .amount(request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO)
+                    .amount(isFreeDemo
+                            ? BigDecimal.ZERO
+                            : (request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO))
                     .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
                     .bookedAt(LocalDateTime.now())
                     .cancellationPolicy(getDefaultCancellationPolicy())
@@ -123,14 +140,19 @@ public class BookingService {
                     .notes(request.getNotes())
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
+                    .isFreeDemo(isFreeDemo) // ✅ NEW
                     .build();
 
             Booking saved = bookingRepository.save(booking);
-            log.info("✅ Booking created: ID={}, Student={}, Session={}",
-                    saved.getId(), saved.getStudentName(), saved.getSessionId());
+            log.info("✅ Booking created: ID={}, Student={}, Session={}, isFreeDemo={}",
+                    saved.getId(), saved.getStudentName(), saved.getSessionId(), saved.getIsFreeDemo());
 
-            // Publish event
-            eventPublisher.publishBookingCreated(saved);
+            // ✅ Publish event based on free/paid
+            if (Boolean.TRUE.equals(saved.getIsFreeDemo())) {
+                eventPublisher.publishBookingCreated(saved);
+            } else {
+                eventPublisher.publishBookingCreated(saved);
+            }
 
             return toDto(saved);
 
@@ -191,9 +213,9 @@ public class BookingService {
                 .sessionType(com.tcon.learning_management_service.session.entity.SessionType.ONE_ON_ONE)
                 .courseId(null) // One-on-one has no course
                 .teacherId(request.getTeacherId())
-                .teacherName("Teacher") // TODO: Fetch from User Service if needed
-                .studentId(studentId) // ✅ NEW: Direct student reference
-                .bookingId(null) // ✅ Will be set after booking is created
+                .teacherName("Teacher")
+                .studentId(studentId) // ✅ Direct student reference
+                .bookingId(null) // Will be set after booking is created
                 .title(request.getSubject() != null ? request.getSubject() : "One-on-One Class")
                 .description("Direct booking with " + request.getStudentName())
                 .status(com.tcon.learning_management_service.session.entity.ClassStatus.SCHEDULED)
@@ -211,24 +233,39 @@ public class BookingService {
         ClassSession savedSession = sessionRepository.save(session);
         log.info("✅ ClassSession created: {} (Type: ONE_ON_ONE)", savedSession.getId());
 
-        // ==================== STEP 2: CREATE BOOKING LINKED TO SESSION ====================
+        // ==================== STEP 2: TRY FREE DEMO ====================
+
+        boolean isFreeDemo = false;
+        try {
+            demoLimitService.consumeFreeDemo(studentId);
+            isFreeDemo = true;
+            log.info("Using free demo for direct one-on-one booking, student {}", studentId);
+        } catch (Exception ex) {
+            log.info("No free demo available for student {}: {}", studentId, ex.getMessage());
+            isFreeDemo = false;
+        }
+
+        // ==================== STEP 3: CREATE BOOKING LINKED TO SESSION ====================
 
         log.info("🔨 Creating Booking linked to session: {}", savedSession.getId());
 
         Booking booking = Booking.builder()
-                .sessionId(savedSession.getId()) // ✅ ALWAYS has sessionId now
+                .sessionId(savedSession.getId()) // ALWAYS has sessionId now
                 .courseId(null) // One-on-one has no course
                 .studentId(studentId)
                 .studentName(request.getStudentName())
                 .studentEmail(request.getStudentEmail())
                 .teacherId(request.getTeacherId())
+                .teacherName(savedSession.getTeacherName())
                 .parentId(request.getParentId())
                 .subject(request.getSubject())
                 .durationMinutes(duration)
                 .sessionStartTime(request.getSessionStartTime())
                 .sessionEndTime(request.getSessionEndTime())
-                .status(BookingStatus.PENDING) // Awaiting teacher approval
-                .amount(request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO)
+                .status(BookingStatus.PENDING)
+                .amount(isFreeDemo
+                        ? BigDecimal.ZERO
+                        : (request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO))
                 .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
                 .bookedAt(LocalDateTime.now())
                 .cancellationPolicy(getDefaultCancellationPolicy())
@@ -236,11 +273,12 @@ public class BookingService {
                 .notes(request.getNotes())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
+                .isFreeDemo(isFreeDemo) // ✅ NEW
                 .build();
 
         Booking saved = bookingRepository.save(booking);
 
-        // ==================== STEP 3: UPDATE SESSION WITH BOOKING ID ====================
+        // ==================== STEP 4: UPDATE SESSION WITH BOOKING ID ====================
 
         savedSession.setBookingId(saved.getId());
         sessionRepository.save(savedSession);
@@ -253,9 +291,14 @@ public class BookingService {
         log.info("   📚 Subject: {}", saved.getSubject());
         log.info("   ⏱️ Duration: {} minutes", saved.getDurationMinutes());
         log.info("   📅 Time: {} to {}", saved.getSessionStartTime(), saved.getSessionEndTime());
+        log.info("   🎁 isFreeDemo: {}", saved.getIsFreeDemo());
 
         // Publish event
-        eventPublisher.publishBookingCreated(saved);
+        if (Boolean.TRUE.equals(saved.getIsFreeDemo())) {
+            eventPublisher.publishBookingCreated(saved);
+        } else {
+            eventPublisher.publishBookingCreated(saved);
+        }
 
         return toDto(saved);
     }
@@ -304,15 +347,15 @@ public class BookingService {
                     .build());
         }
 
-        // ⭐ Create ONE booking with multiple sessions
+        // ⭐ Create ONE booking with multiple sessions (kept as paid flow)
         Booking booking = Booking.builder()
                 .studentId(studentId)
                 .studentName(request.getStudentName())
                 .studentEmail(request.getStudentEmail())
                 .teacherId(request.getTeacherId())
                 .courseId(request.getCourseId())
-                .sessions(sessionTimes) // ✅ All sessions in one booking
-                .amount(request.getTotalAmount()) // ✅ Total amount for all sessions
+                .sessions(sessionTimes) // All sessions in one booking
+                .amount(request.getTotalAmount()) // Total amount for all sessions
                 .currency(request.getCurrency())
                 .status(BookingStatus.PENDING)
                 .bookedAt(LocalDateTime.now())
@@ -321,6 +364,7 @@ public class BookingService {
                 .notes(request.getNotes())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
+                .isFreeDemo(false) // batch booking not using free demos for now
                 .build();
 
         // ⭐ Save ONE booking
@@ -346,9 +390,9 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
-        // ✅ ADD THIS LOG
-        log.info("📊 Booking durationMinutes BEFORE confirm: {}", booking.getDurationMinutes());
-        log.info("📅 Session times: {} to {}", booking.getSessionStartTime(), booking.getSessionEndTime());
+        if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
+            throw new IllegalArgumentException("Free demo booking is already confirmed; no payment required");
+        }
 
         if (booking.getStatus() != BookingStatus.PENDING &&
                 booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
@@ -362,17 +406,9 @@ public class BookingService {
         booking.setUpdatedAt(LocalDateTime.now());
 
         Booking updated = bookingRepository.save(booking);
-
-        // ✅ ADD THIS LOG
-        log.info("📊 Booking durationMinutes AFTER save: {}", updated.getDurationMinutes());
         log.info("✅ Booking confirmed: {}", bookingId);
 
-        // Publish event
         eventPublisher.publishBookingConfirmed(updated);
-
-        // TODO: Create class sessions after payment
-        // createSessionsFromBooking(bookingId);
-
         return toDto(updated);
     }
 
@@ -395,8 +431,15 @@ public class BookingService {
             throw new IllegalArgumentException("Only pending bookings can be approved");
         }
 
-        // Update booking status to PENDING_PAYMENT (student needs to pay)
-        booking.setStatus(BookingStatus.PENDING_PAYMENT);
+        // ✅ KEY CHANGE: free demo → directly CONFIRMED, no payment needed
+        if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
+            booking.setStatus(BookingStatus.CONFIRMED);
+            booking.setConfirmedAt(LocalDateTime.now());
+            log.info("✅ Free demo booking auto-confirmed after teacher approval: {}", bookingId);
+        } else {
+            // Normal paid booking → needs payment
+            booking.setStatus(BookingStatus.PENDING_PAYMENT);
+        }
 
         // Append teacher's message to notes
         if (teacherMessage != null && !teacherMessage.isEmpty()) {
@@ -502,8 +545,6 @@ public class BookingService {
                 .collect(Collectors.toList());
     }
 
-    // src/main/java/com/tcon/learning_management_service/booking/service/BookingService.java
-
     public List<BookingDto> getParentBookings(String parentId) {
         log.info("📋 Getting bookings for parent: {}", parentId);
 
@@ -523,7 +564,6 @@ public class BookingService {
 
         log.info("✅ Found {} pending requests for teacher", pending.size());
 
-        // Log each pending request for debugging
         pending.forEach(booking -> {
             int sessionCount = (booking.getSessions() != null && !booking.getSessions().isEmpty())
                     ? booking.getSessions().size()
@@ -627,13 +667,13 @@ public class BookingService {
                 .studentName(booking.getStudentName())
                 .studentEmail(booking.getStudentEmail())
                 .teacherId(booking.getTeacherId())
-                .parentId(booking.getParentId())                    // ✅ ADD
-                .subject(booking.getSubject())                      // ✅ ADD
-                .durationMinutes(booking.getDurationMinutes())      // ✅ ADD
+                .parentId(booking.getParentId())
+                .subject(booking.getSubject())
+                .durationMinutes(booking.getDurationMinutes())
                 .status(booking.getStatus())
                 .sessionStartTime(booking.getSessionStartTime())
                 .sessionEndTime(booking.getSessionEndTime())
-                .sessions(sessionDtos) // ✅ Include sessions
+                .sessions(sessionDtos)
                 .amount(booking.getAmount())
                 .currency(booking.getCurrency())
                 .paymentId(booking.getPaymentId())
@@ -652,6 +692,60 @@ public class BookingService {
                 .notes(booking.getNotes())
                 .createdAt(booking.getCreatedAt())
                 .updatedAt(booking.getUpdatedAt())
+                .isFreeDemo(booking.getIsFreeDemo()) // ✅ map flag
                 .build();
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PRIVATE: Auto-create video session after booking is confirmed
+    // ─────────────────────────────────────────────────────────────────────
+    private void createVideoSessionSafe(Booking booking) {
+        log.info("🎥 [BookingService] Auto-creating video session for bookingId={}",
+                booking.getId());
+        try {
+            // Build unique Agora channel name from booking ID
+            String rawId = booking.getId().replace("-", "");
+            String channelName = "session_" +
+                    rawId.substring(0, Math.min(12, rawId.length()));
+
+            // Determine scheduled end time
+            LocalDateTime endTime = booking.getSessionEndTime();
+            if (endTime == null
+                    && booking.getSessionStartTime() != null
+                    && booking.getDurationMinutes() != null) {
+                endTime = booking.getSessionStartTime()
+                        .plusMinutes(booking.getDurationMinutes());
+            }
+
+            VideoSessionCreateRequest videoRequest =
+                    VideoSessionCreateRequest.builder()
+                            .bookingId(booking.getId())
+                            .classSessionId(booking.getSessionId())
+                            .teacherId(booking.getTeacherId())
+                            .studentId(booking.getStudentId())
+                            .subject(booking.getSubject())
+                            .scheduledStartTime(booking.getSessionStartTime())
+                            .scheduledEndTime(endTime)
+                            .channelName(channelName)
+                            .recordingEnabled(true)
+                            .build();
+
+            VideoSessionCreateResponse response =
+                    videoServiceClient.createVideoSession(videoRequest);
+
+            if (response != null) {
+                log.info("✅ [BookingService] Video session created: id={}, channel={}",
+                        response.getId(), response.getChannelName());
+            } else {
+                log.warn("⚠️ [BookingService] Video session creation returned null " +
+                        "(video-service may be down). bookingId={}", booking.getId());
+            }
+
+        } catch (Exception e) {
+            // ⚠️ Never fail the booking if video session fails
+            log.error("❌ [BookingService] Failed to create video session for " +
+                    "bookingId={}: {}", booking.getId(), e.getMessage());
+        }
+    }
+
 }

@@ -23,15 +23,17 @@ public class BookingEventPublisher {
 
     public void publishBookingCreated(Booking booking) {
         try {
-            BookingEvent event = BookingEvent.builder()
-                    .eventType("BOOKING_CREATED")
-                    .bookingId(booking.getId())
-                    .sessionId(booking.getSessionId())
-                    .studentId(booking.getStudentId())
-                    .teacherId(booking.getTeacherId())
-                    .sessionStartTime(booking.getSessionStartTime())
-                    .timestamp(LocalDateTime.now())
-                    .build();
+            // ✅ FIX: Use Map to include classSessionId
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventType",      "BOOKING_CREATED");
+            event.put("bookingId",      booking.getId());
+            event.put("classSessionId", booking.getSessionId()); // ✅
+            event.put("sessionId",      booking.getSessionId()); // ✅
+            event.put("studentId",      booking.getStudentId());
+            event.put("teacherId",      booking.getTeacherId());
+            event.put("scheduledStartTime", booking.getSessionStartTime() != null
+                    ? booking.getSessionStartTime().toString() : "");
+            event.put("timestamp",      java.time.Instant.now().toString());
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
             log.info("📤 Published BOOKING_CREATED for booking: {}", booking.getId());
@@ -120,18 +122,53 @@ public class BookingEventPublisher {
 
     public void publishBookingApproved(Booking booking) {
         try {
-            BookingEvent event = BookingEvent.builder()
-                    .eventType("BOOKING_APPROVED")
-                    .bookingId(booking.getId())
-                    .sessionId(booking.getSessionId())
-                    .studentId(booking.getStudentId())
-                    .teacherId(booking.getTeacherId())
-                    .sessionStartTime(booking.getSessionStartTime())
-                    .timestamp(LocalDateTime.now())
-                    .build();
+            // ✅ FIX: Use Map<String, Object> like publishBookingConfirmed
+            // BookingEvent uses "sessionId" but listener reads "classSessionId"
+
+            LocalDateTime startTime = booking.getSessionStartTime();
+            LocalDateTime endTime   = booking.getSessionEndTime();
+            Integer duration        = booking.getDurationMinutes();
+
+            // Handle batch bookings
+            if ((startTime == null || duration == null || duration == 0)
+                    && booking.getSessions() != null
+                    && !booking.getSessions().isEmpty()) {
+                Booking.SessionTime first = booking.getSessions().get(0);
+                startTime = first.getStartTime();
+                endTime   = first.getEndTime();
+                duration  = (int) java.time.Duration
+                        .between(first.getStartTime(), first.getEndTime())
+                        .toMinutes();
+            }
+
+            // ✅ classSessionId = booking.getSessionId()
+            String classSessionId = booking.getSessionId();
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventType",          "BOOKING_APPROVED");
+            event.put("bookingId",          booking.getId());
+            event.put("classSessionId",     classSessionId);      // ✅ correct field name
+            event.put("sessionId",          classSessionId);      // ✅ also send as sessionId for fallback
+            event.put("teacherId",          booking.getTeacherId());
+            event.put("studentId",          booking.getStudentId());
+            event.put("parentId",           booking.getParentId() != null
+                    ? booking.getParentId() : "");
+            event.put("scheduledStartTime", startTime != null ? startTime.toString() : "");
+            event.put("scheduledEndTime",   endTime   != null ? endTime.toString()   : "");
+            event.put("durationMinutes",    duration  != null ? duration             : 60);
+            event.put("subject",            booking.getSubject() != null
+                    ? booking.getSubject() : "One-on-One Class");
+            event.put("timestamp",          java.time.Instant.now().toString());
 
             kafkaTemplate.send(TOPIC, booking.getId(), event);
+
             log.info("📤 Published BOOKING_APPROVED for booking: {}", booking.getId());
+            log.info("   classSessionId : {}", classSessionId);
+            log.info("   teacherId      : {}", booking.getTeacherId());
+            log.info("   studentId      : {}", booking.getStudentId());
+            log.info("   startTime      : {}", startTime);
+            log.info("   durationMinutes: {}", duration);
+
         } catch (Exception e) {
             log.error("❌ Failed to publish BOOKING_APPROVED", e);
         }
