@@ -1,4 +1,3 @@
-// src/main/java/com/tcon/learning_management_service/booking/dto/BookingDto.java
 
 package com.tcon.learning_management_service.booking.dto;
 
@@ -26,6 +25,9 @@ public class BookingDto {
     private String studentName;
     private String studentEmail;
     private String teacherId;
+    private String teacherName;
+
+    private Boolean isFreeDemo;
 
     private String parentId;
     private String subject;

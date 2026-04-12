@@ -110,4 +110,33 @@ public class DemoLimitService {
         return getDemoLimit(studentId);
     }
 
+    // DemoLimitService.java
+
+    public boolean hasFreeDemo(String studentId) {
+        DemoClassLimit limit = getOrCreateLimit(studentId);
+        return Boolean.TRUE.equals(limit.getIsLimitActive())
+                && limit.getDemosUsed() < limit.getTotalDemosAllowed();
+    }
+
+    @Transactional
+    public DemoLimitDto consumeFreeDemo(String studentId) {
+        DemoClassLimit limit = getOrCreateLimit(studentId);
+
+        if (!hasFreeDemo(studentId)) {
+            throw new IllegalArgumentException("No free demo sessions remaining");
+        }
+
+        limit.setDemosUsed(limit.getDemosUsed() + 1);
+
+        if (limit.getFirstDemoAt() == null) {
+            limit.setFirstDemoAt(LocalDateTime.now());
+        }
+        limit.setLastDemoAt(LocalDateTime.now());
+
+        limitRepository.save(limit);
+        log.info("Free demo consumed for student: {}. Used: {}", studentId, limit.getDemosUsed());
+
+        return getDemoLimit(studentId);
+    }
+
 }

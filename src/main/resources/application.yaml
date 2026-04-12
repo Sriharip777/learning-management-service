@@ -10,12 +10,19 @@ spring:
   application:
     name: learning-management-service
 
+  # ─── Jackson: fix LocalDateTime serialization ───────────────────────────────
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    time-zone: UTC
+
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10}
       database: ${MONGODB_DATABASE:learning_management}
       auto-index-creation: true
-
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -32,10 +39,65 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
-    topics:
-      booking-events: booking-events
-      session-events: session-events
 
+  # ─── Spring Cloud OpenFeign ──────────────────────────────────────────────────
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 5000
+            readTimeout: 5000
+            loggerLevel: FULL
+          video-service:
+            connectTimeout: 10000
+            readTimeout: 10000
+            url: ${VIDEO_SERVICE_URL:http://localhost:8083}
+
+# ─── Kafka Topic Names (read by @KafkaListener and BookingService) ──────────────
+kafka:
+  topics:
+    booking-events: booking-events
+    session-events: session-events
+
+# ─── Video Service URL (read by @FeignClient url="${video.service.url:...}") ────
+video:
+  service:
+    url: ${VIDEO_SERVICE_URL:http://localhost:8083}
+
+# ─── Feign Circuit Breaker (REQUIRED for fallback = VideoServiceClientFallback) ─
+feign:
+  circuitbreaker:
+    enabled: true
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+        loggerLevel: FULL
+      video-service:
+        connectTimeout: 10000
+        readTimeout: 10000
+
+# ─── Resilience4j Circuit Breaker Instance ──────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      video-service:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+  timelimiter:
+    instances:
+      video-service:
+        timeoutDuration: 10s
+
+# ─── Eureka ─────────────────────────────────────────────────────────────────────
 eureka:
   client:
     service-url:
@@ -48,24 +110,16 @@ eureka:
     lease-expiration-duration-in-seconds: 90
     instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
 
+# ─── External Service URLs ───────────────────────────────────────────────────────
 user:
   service:
     url: ${USER_SERVICE_URL:http://localhost:8081}
+
 auth:
   service:
     url: ${AUTH_SERVICE_URL:http://localhost:8081}
 
-feign:
-  client:
-    config:
-      default:
-        connectTimeout: 5000
-        readTimeout: 5000
-        loggerLevel: FULL
-      user-service:
-        connectTimeout: 10000
-        readTimeout: 10000
-
+# ─── Actuator ───────────────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
@@ -79,6 +133,7 @@ management:
       prometheus:
         enabled: true
 
+# ─── Logging ────────────────────────────────────────────────────────────────────
 logging:
   level:
     root: INFO
@@ -87,5 +142,6 @@ logging:
     io.github.resilience4j: INFO
     reactor.netty: WARN
     io.netty: ERROR
+    com.tcon.learning_management_service: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

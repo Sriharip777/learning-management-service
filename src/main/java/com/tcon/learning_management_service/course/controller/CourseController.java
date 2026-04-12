@@ -283,6 +283,4 @@ public class CourseController {
         return courseService.unassignTeacherFromCourse(courseId, teacherUserId, adminId);
     }
 
-
-
 }

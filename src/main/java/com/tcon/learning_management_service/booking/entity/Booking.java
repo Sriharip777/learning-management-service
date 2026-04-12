@@ -29,6 +29,8 @@ public class Booking {
     @Indexed
     private String sessionId;
 
+    private Boolean isFreeDemo;
+
     @Indexed
     private String courseId;
 
@@ -40,6 +42,7 @@ public class Booking {
 
     @Indexed
     private String teacherId;
+    private String teacherName;
 
 
     private String parentId;           // Optional parent observer

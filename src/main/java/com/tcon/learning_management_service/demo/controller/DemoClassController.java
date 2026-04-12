@@ -135,4 +135,11 @@ public class DemoClassController {
         return ResponseEntity.status(HttpStatus.CREATED).body(limit);
     }
 
+    @PostMapping("/consume-free-demo")
+    public ResponseEntity<DemoLimitDto> consumeFreeDemo(
+            @RequestHeader("X-User-Id") String studentId) {
+        DemoLimitDto limit = limitService.consumeFreeDemo(studentId);
+        return ResponseEntity.ok(limit);
+    }
+
 }
