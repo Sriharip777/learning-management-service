@@ -5,18 +5,24 @@ import com.tcon.learning_management_service.assignment.dto.AssignStudentsRequest
 import com.tcon.learning_management_service.assignment.dto.StartAssignmentRequest;
 import com.tcon.learning_management_service.assignment.entity.Assignment;
 import com.tcon.learning_management_service.assignment.entity.Submission;
+import com.tcon.learning_management_service.assignment.entity.Question; // ✅ ADDED
 import com.tcon.learning_management_service.assignment.service.AssignmentService;
 import com.tcon.learning_management_service.assignment.service.SubmissionService;
+import com.tcon.learning_management_service.assignment.service.QuestionService; // ✅ ADDED
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/assignments")
 @RequiredArgsConstructor
 public class AssignmentController {
+
     private final AssignmentService assignmentService;
     private final SubmissionService submissionService;
+    private final QuestionService questionService; // ✅ ADDED
 
     @PostMapping
     public Assignment createAssignment(@RequestBody AssignmentCreateRequest request) {
@@ -65,12 +71,22 @@ public class AssignmentController {
     /**
      * ✅ UPDATED: Parent can view their child's assignment results (SECURED)
      */
-
     @GetMapping("/parent/student/{studentId}/results")
     public List<Submission> getStudentResultsForParent(
             @PathVariable String studentId,
             @RequestHeader("X-User-Id") String parentId,
             @RequestHeader("X-User-Role") String role) {
         return submissionService.getResultsForParent(parentId, studentId, role);
+    }
+
+    /**
+     * 🔥 NEW: Get Questions for Assignment
+     */
+    @GetMapping("/{assignmentId}/questions")
+    public List<Question> getQuestionsByAssignment(@PathVariable String assignmentId) {
+
+        Assignment assignment = assignmentService.getAssignment(assignmentId);
+
+        return questionService.getQuestionsByIds(assignment.getQuestionIds());
     }
 }
