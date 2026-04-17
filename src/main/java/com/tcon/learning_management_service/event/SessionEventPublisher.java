@@ -1,4 +1,6 @@
 package com.tcon.learning_management_service.event;
+
+import com.tcon.events.events.SessionEvent;
 import com.tcon.learning_management_service.demo.entity.DemoClass;
 import com.tcon.learning_management_service.session.entity.ClassSession;
 import lombok.RequiredArgsConstructor;
@@ -39,18 +41,14 @@ public class SessionEventPublisher {
     // ✅ ADD THIS NEW METHOD
     public void publishSessionCreated(ClassSession session) {
         try {
-            Map<String, Object> event = new HashMap<>();
-            event.put("eventType", "SESSION_CREATED");
-            event.put("sessionId", session.getId());
-            event.put("courseId", session.getCourseId());
-            event.put("sessionType", session.getSessionType().toString());
-            event.put("teacherId", session.getTeacherId());
-            event.put("scheduledStartTime", session.getScheduledStartTime().toString());
-            event.put("scheduledEndTime", session.getScheduledEndTime().toString());
-            event.put("durationMinutes", session.getDurationMinutes());
-            event.put("maxParticipants", session.getMaxParticipants());
-            event.put("title", session.getTitle());
-            event.put("timestamp", LocalDateTime.now().toString());
+            SessionEvent event = SessionEvent.builder()
+                    .eventType("SESSION_CREATED")
+                    .sessionId(session.getId())
+                    .courseId(session.getCourseId())
+                    .teacherId(session.getTeacherId())
+                    .scheduledStartTime(session.getScheduledStartTime())
+                    .timestamp(LocalDateTime.now())
+                    .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("📤 Published SESSION_CREATED event: {}", session.getId());
@@ -58,7 +56,6 @@ public class SessionEventPublisher {
             log.error("❌ Failed to publish session created event", e);
         }
     }
-
 
     public void publishSessionStarted(ClassSession session) {
         try {
@@ -184,21 +181,5 @@ public class SessionEventPublisher {
         } catch (Exception e) {
             log.error("Failed to publish demo class completed event", e);
         }
-    }
-
-    @lombok.Data
-    @lombok.Builder
-    @lombok.NoArgsConstructor
-    @lombok.AllArgsConstructor
-    public static class SessionEvent {
-        private String eventType;
-        private String sessionId;
-        private String newSessionId;
-        private String courseId;
-        private String teacherId;
-        private String studentId;
-        private LocalDateTime scheduledStartTime;
-        private String cancellationReason;
-        private LocalDateTime timestamp;
     }
 }
