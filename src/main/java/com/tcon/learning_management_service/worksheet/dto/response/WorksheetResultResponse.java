@@ -9,6 +9,10 @@ import java.util.List;
 @Builder
 public class WorksheetResultResponse {
 
+    // ✅ NEW FIELD ADDED
+    private String worksheetId;
+
+    // ✅ EXISTING (unchanged)
     private int totalQuestions;
     private int correctAnswers;
     private int wrongAnswers;

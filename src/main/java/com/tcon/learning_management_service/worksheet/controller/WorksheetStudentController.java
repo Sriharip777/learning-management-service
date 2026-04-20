@@ -4,6 +4,8 @@ import com.tcon.learning_management_service.worksheet.dto.request.SubmitWorkshee
 import com.tcon.learning_management_service.worksheet.dto.response.StudentQuestionResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResultResponse;
 import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
+import com.tcon.learning_management_service.worksheet.repository.WorksheetAttemptRepository;
+import com.tcon.learning_management_service.worksheet.service.WorksheetService;
 import com.tcon.learning_management_service.worksheet.service.WorksheetStudentService;
 
 import lombok.RequiredArgsConstructor;
@@ -16,7 +18,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class WorksheetStudentController {
 
+    // ✅ EXISTING
     private final WorksheetStudentService studentService;
+
+    // ✅ NEW (ADDED)
+    private final WorksheetService worksheetService;
+    private final WorksheetAttemptRepository attemptRepository;
 
     /*
      * =====================================
@@ -44,7 +51,6 @@ public class WorksheetStudentController {
         System.out.println("Worksheet ID: " + worksheetId);
         System.out.println("Student ID: " + studentId);
 
-        // Optional: validate assignment
         studentService.startWorksheet(worksheetId, studentId);
 
         return "Worksheet started successfully";
@@ -87,5 +93,17 @@ public class WorksheetStudentController {
             @RequestHeader("X-User-Id") String studentId
     ) {
         return studentService.getResult(worksheetId, studentId);
+    }
+
+    /*
+     * =====================================
+     * 🔥 NEW: GET ALL RESULTS (ADDED)
+     * =====================================
+     */
+    @GetMapping("/results")
+    public List<WorksheetResultResponse> getAllResults(
+            @RequestParam String studentId
+    ) {
+        return worksheetService.getAllResults(studentId);
     }
 }
