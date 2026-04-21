@@ -24,6 +24,11 @@ public class QuestionService {
 
     private final AssignmentQuestionRepository questionRepository;
 
+    // ✅ ADDED
+    public List<Question> getQuestionsByIds(List<String> ids) {
+        return questionRepository.findAllById(ids);
+    }
+
     /**
      * ✅ NEW: Teacher creates question (manual)
      */
@@ -47,6 +52,9 @@ public class QuestionService {
 
         List<Question> questions = new ArrayList<>();
         List<ErrorRow> errors = new ArrayList<>();
+
+        // ✅ ADDED
+        List<Question> saved = new ArrayList<>();
 
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
 
@@ -86,13 +94,20 @@ public class QuestionService {
                 throw new RuntimeException("No valid questions found");
             }
 
-            questionRepository.saveAll(questions);
+            // 🔥 MODIFIED (REPLACED old logic)
+            saved = questionRepository.saveAll(questions);
 
         } catch (Exception e) {
             throw new RuntimeException("Excel processing failed: " + e.getMessage());
         }
 
-        return new UploadResponse(questions.size(), errors.size(), errors);
+        // 🔥 MODIFIED RETURN (clean + enhanced)
+        return new UploadResponse(
+                saved.size(),
+                errors.size(),
+                errors,
+                saved
+        );
     }
 
     /**

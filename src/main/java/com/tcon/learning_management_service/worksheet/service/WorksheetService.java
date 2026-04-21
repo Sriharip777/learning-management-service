@@ -3,11 +3,7 @@ package com.tcon.learning_management_service.worksheet.service;
 import com.tcon.learning_management_service.worksheet.dto.request.CreateWorksheetRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.QuestionUpdateRequest;
 import com.tcon.learning_management_service.worksheet.dto.request.UpdateWorksheetRequest;
-import com.tcon.learning_management_service.worksheet.dto.response.ErrorRow;
-import com.tcon.learning_management_service.worksheet.dto.response.UploadResponse;
-import com.tcon.learning_management_service.worksheet.dto.response.WorksheetDetailResponse;
-import com.tcon.learning_management_service.worksheet.dto.response.WorksheetResponse;
-import com.tcon.learning_management_service.worksheet.dto.response.WorksheetSummaryResponse;
+import com.tcon.learning_management_service.worksheet.dto.response.*;
 import com.tcon.learning_management_service.worksheet.entity.*;
 import com.tcon.learning_management_service.worksheet.integration.CourseIntegrationService;
 import com.tcon.learning_management_service.worksheet.integration.dto.TopicDto;
@@ -39,8 +35,11 @@ public class WorksheetService {
     private final WorksheetValidator worksheetValidator;
     private final CourseIntegrationService courseIntegrationService;
 
-    // ✅ ADDED (for teacher assignment history)
+    // ✅ EXISTING
     private final WorksheetAssignmentRepository assignmentRepository;
+
+    // ✅ NEW (ADDED)
+    private final WorksheetAttemptRepository attemptRepository;
 
     /*
      * =====================================
@@ -233,7 +232,7 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * 🔥 NEW: GET ALL WORKSHEETS
+     * GET ALL WORKSHEETS
      * =====================================
      */
     public List<Worksheet> getAllWorksheets() {
@@ -242,7 +241,7 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * 🔥 NEW: TEACHER ASSIGNMENT HISTORY
+     * TEACHER ASSIGNMENT HISTORY
      * =====================================
      */
     public List<WorksheetSummaryResponse> getTeacherAssignmentHistory(String teacherId) {
@@ -307,26 +306,19 @@ public class WorksheetService {
 
     /*
      * =====================================
-     * PREVIEW WORKSHEET (ADD THIS METHOD)
+     * PREVIEW WORKSHEET
      * =====================================
      */
     public WorksheetDetailResponse getWorksheetPreview(String worksheetId) {
 
-        // 1️⃣ Fetch worksheet
         Worksheet worksheet = worksheetRepository
                 .findById(worksheetId)
                 .orElseThrow(() -> new RuntimeException("Worksheet not found"));
 
-        // 2️⃣ Fetch latest version
         WorksheetVersion version = worksheetVersionRepository
                 .findTopByWorksheetIdOrderByVersionNumberDesc(worksheetId)
                 .orElseThrow(() -> new RuntimeException("No version found"));
 
-        if (version.getQuestions() == null || version.getQuestions().isEmpty()) {
-            throw new RuntimeException("No questions found in version");
-        }
-
-        // 3️⃣ Fetch actual questions using version refs
         List<WorksheetDetailResponse.QuestionResponse> questionResponses =
                 version.getQuestions().stream().map(ref -> {
 
@@ -345,8 +337,6 @@ public class WorksheetService {
                             qr.setQuestionText(q.getQuestionText());
                             qr.setOptions(q.getOptions());
                             qr.setReason(q.getReason());
-
-                            // ✅ IMPORTANT: use version data
                             qr.setOrderIndex(ref.getOrderIndex());
                             qr.setMarks(ref.getMarks());
 
@@ -355,9 +345,7 @@ public class WorksheetService {
                         }).sorted(Comparator.comparing(WorksheetDetailResponse.QuestionResponse::getOrderIndex))
                         .toList();
 
-        // 4️⃣ Build response
         WorksheetDetailResponse response = new WorksheetDetailResponse();
-
         response.setWorksheetId(worksheet.getId());
         response.setTitle(worksheet.getTitle());
         response.setVersion(version.getVersionNumber());
@@ -365,11 +353,46 @@ public class WorksheetService {
 
         return response;
     }
+
     /*
      * =====================================
-     * HELPERS
+     * 🔥 NEW: STUDENT RESULTS
      * =====================================
      */
+    public List<WorksheetResultResponse> getAllResults(String studentId) {
+
+        List<WorksheetAttempt> attempts = attemptRepository.findByStudentId(studentId);
+
+        List<WorksheetResultResponse> responses = new ArrayList<>();
+
+        for (WorksheetAttempt attempt : attempts) {
+            try {
+
+                int total = attempt.getTotalQuestions() != null ? attempt.getTotalQuestions() : 0;
+                int correct = attempt.getCorrectAnswers() != null ? attempt.getCorrectAnswers() : 0;
+
+                double percentage = total == 0 ? 0 : ((double) correct / total) * 100;
+
+                WorksheetResultResponse res = WorksheetResultResponse.builder()
+                        .worksheetId(attempt.getWorksheetId())
+                        .totalQuestions(total)
+                        .correctAnswers(correct)
+                        .wrongAnswers(total - correct)
+                        .scorePercentage(percentage)
+                        .results(Collections.emptyList())
+                        .build();
+
+                responses.add(res);
+
+            } catch (Exception e) {
+                log.error("Error processing worksheet result for id={}", attempt.getWorksheetId());
+            }
+        }
+
+        return responses;
+    }
+
+    // ================= HELPERS =================
 
     private String getCell(Row row, int index) {
         Cell cell = row.getCell(index);
