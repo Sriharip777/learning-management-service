@@ -1,42 +1,23 @@
-# ================================
-# Builder stage
-# ================================
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# Install shared modules first
+cd ~/educonnect-infrastructure-platform
+mvn clean install -DskipTests -B -q
 
-WORKDIR /app
+# Build service JAR
+cd ~/learning-management-service
+mvn clean package -DskipTests -B -q
 
-# Copy Maven wrapper & pom (for dependency caching)
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
-
-RUN chmod +x mvnw
-
-# Download dependencies (cached unless pom.xml changes)
-RUN ./mvnw dependency:go-offline -B -q
-
-# Copy source and build
-COPY src ./src
-RUN ./mvnw clean package -DskipTests=true -B -q
-
-
-# ================================
-# Runtime stage                   ← named so --target works
-# ================================
+# Use simple Dockerfile that copies prebuilt JAR
+cat > Dockerfile << 'EOF'
 FROM eclipse-temurin:17-jre-alpine AS runtime
-
 WORKDIR /app
-
-# Security: non-root user
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN addgroup -S spring && adduser -S spring -G spring && chown -R spring:spring /app
 USER spring:spring
+COPY --chown=spring:spring target/*.jar /app/app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-XX:+ExitOnOutOfMemoryError", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]
+EOF
 
-# Copy only the JAR from builder
-COPY --from=builder /app/target/*.jar app.jar
-
-EXPOSE 8083
-
-# Fixed: port 8080 not 8081
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8083/actuator/health || exit 1
-
-ENTRYPOINT ["java", "-Xms256m", "-Xmx512m", "-jar", "app.jar"]
+# Build & Push
+docker build --platform linux/amd64 --provenance=false --no-cache \
+  -t us-east1-docker.pkg.dev/fineflux/pulse/learning-management-service:main-1.0.0.1 . && \
+docker push us-east1-docker.pkg.dev/fineflux/pulse/learning-management-service:main-1.0.0.1
