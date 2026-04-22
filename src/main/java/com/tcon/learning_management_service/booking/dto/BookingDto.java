@@ -1,4 +1,3 @@
-
 package com.tcon.learning_management_service.booking.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -35,14 +34,12 @@ public class BookingDto {
 
     private BookingStatus status;
 
-    // ✅ Single session fields (backward compatibility)
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime sessionStartTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime sessionEndTime;
 
-    // ✅ Multiple sessions (for batch bookings)
     private List<SessionTimeDto> sessions;
 
     private BigDecimal amount;
@@ -80,7 +77,6 @@ public class BookingDto {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
 
-    // ✅ Nested DTO class for multiple sessions (INSIDE BookingDto)
     @Data
     @Builder
     @NoArgsConstructor
@@ -94,4 +90,12 @@ public class BookingDto {
 
         private BigDecimal amount;
     }
+
+    // Display-only fields in teacher’s timezone
+
+    private String displaySessionStartTime;
+    private String displaySessionEndTime;
+    private String displayBookedAt;
+    private String displayTimezoneId;
+    private String displayTimezoneAbbreviation;
 }
