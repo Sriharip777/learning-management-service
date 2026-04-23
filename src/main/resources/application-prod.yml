@@ -1,3 +1,7 @@
+# =====================================================================
+# LEARNING-MANAGEMENT-SERVICE — PRODUCTION
+# =====================================================================
+
 server:
   port: ${PORT:8084}
   shutdown: graceful
@@ -77,13 +81,13 @@ spring:
             connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
             readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
 
-# ─── Kafka Topic Names ────────────────────────────────────────────────────────
+# Kafka Topic Names
 kafka:
   topics:
     booking-events: ${KAFKA_TOPIC_BOOKING_EVENTS:booking-events}
     session-events: ${KAFKA_TOPIC_SESSION_EVENTS:session-events}
 
-# ─── External Service URLs ────────────────────────────────────────────────────
+# External Service URLs
 video:
   service:
     url: ${VIDEO_SERVICE_URL}
@@ -96,12 +100,12 @@ auth:
   service:
     url: ${AUTH_SERVICE_URL}
 
-# ─── Feign Circuit Breaker ────────────────────────────────────────────────────
+# Feign Circuit Breaker
 feign:
   circuitbreaker:
     enabled: true
 
-# ─── Resilience4j ────────────────────────────────────────────────────────────
+# Resilience4j
 resilience4j:
   circuitbreaker:
     instances:
@@ -134,7 +138,7 @@ resilience4j:
       user-service:
         timeoutDuration: 10s
 
-# ─── Eureka ───────────────────────────────────────────────────────────────────
+# Eureka
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:true}
@@ -161,7 +165,7 @@ eureka:
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 90
 
-# ─── Actuator ─────────────────────────────────────────────────────────────────
+# Actuator
 management:
   endpoints:
     web:
@@ -182,7 +186,7 @@ management:
       prometheus:
         enabled: true
 
-# ─── Logging ──────────────────────────────────────────────────────────────────
+# Logging
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
