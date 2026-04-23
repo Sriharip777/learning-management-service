@@ -25,13 +25,10 @@ public class BookingDto {
     private String studentEmail;
     private String teacherId;
     private String teacherName;
-
     private Boolean isFreeDemo;
-
     private String parentId;
     private String subject;
     private Integer durationMinutes;
-
     private BookingStatus status;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
@@ -77,6 +74,12 @@ public class BookingDto {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
 
+    private String displaySessionStartTime;
+    private String displaySessionEndTime;
+    private String displayBookedAt;
+    private String displayTimezoneId;
+    private String displayTimezoneAbbreviation;
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -90,12 +93,4 @@ public class BookingDto {
 
         private BigDecimal amount;
     }
-
-    // Display-only fields in teacher’s timezone
-
-    private String displaySessionStartTime;
-    private String displaySessionEndTime;
-    private String displayBookedAt;
-    private String displayTimezoneId;
-    private String displayTimezoneAbbreviation;
 }

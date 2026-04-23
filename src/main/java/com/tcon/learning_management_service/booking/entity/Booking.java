@@ -44,20 +44,16 @@ public class Booking {
     private String teacherId;
     private String teacherName;
 
-
-    private String parentId;           // Optional parent observer
-    private String subject;            // What the class is about
-    private Integer durationMinutes;   // How long the class is
-
+    private String parentId;
+    private String subject;
+    private Integer durationMinutes;
 
     @Builder.Default
     private BookingStatus status = BookingStatus.PENDING;
 
-    // ✅ Single session fields (backward compatibility)
     private LocalDateTime sessionStartTime;
     private LocalDateTime sessionEndTime;
 
-    // ✅ Multiple sessions (for batch bookings)
     private List<SessionTime> sessions;
 
     private BigDecimal amount;
@@ -91,7 +87,6 @@ public class Booking {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    // ✅ ADD THIS: Nested class for multiple sessions
     @Data
     @Builder
     @NoArgsConstructor

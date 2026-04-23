@@ -44,9 +44,7 @@ public class BookingService {
     private final VideoServiceClient videoServiceClient;
     private final TeacherAvailabilityRepository teacherAvailabilityRepository;
 
-    // ─────────────────────────────────────────────
-    // Constants
-    // ─────────────────────────────────────────────
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
     private static final DateTimeFormatter DISPLAY_FMT =
             DateTimeFormatter.ofPattern("MMM d, hh:mm a");
@@ -90,7 +88,7 @@ public class BookingService {
 
         validateBookingTime(session.getScheduledStartTime());
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
         if (session.getScheduledStartTime().toLocalDate().equals(now.toLocalDate())) {
             if (session.getScheduledStartTime().isBefore(now.plusMinutes(30))) {
                 throw new IllegalArgumentException("Too late to book this session (same-day buffer)");
@@ -138,12 +136,12 @@ public class BookingService {
                             ? BigDecimal.ZERO
                             : (request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO))
                     .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
-                    .bookedAt(LocalDateTime.now())
+                    .bookedAt(LocalDateTime.now(APP_ZONE))
                     .cancellationPolicy(getDefaultCancellationPolicy())
                     .reminderSent(false)
                     .notes(request.getNotes())
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
+                    .createdAt(LocalDateTime.now(APP_ZONE))
+                    .updatedAt(LocalDateTime.now(APP_ZONE))
                     .isFreeDemo(isFreeDemo)
                     .build();
 
@@ -176,7 +174,6 @@ public class BookingService {
             throw new IllegalArgumentException("Session end time must be after start time");
         }
 
-        // ✅ Time validation with same-day buffer
         validateBookingTime(request.getSessionStartTime());
 
         Integer duration = (int) java.time.Duration.between(
@@ -212,9 +209,9 @@ public class BookingService {
                 .scheduledEndTime(request.getSessionEndTime())
                 .durationMinutes(duration)
                 .maxParticipants(1)
-                .participants(new java.util.ArrayList<>())
+                .participants(new ArrayList<>())
                 .attendedCount(0)
-                .materialUrls(new java.util.ArrayList<>())
+                .materialUrls(new ArrayList<>())
                 .reminderSent(false)
                 .createdBy(request.getTeacherId())
                 .build();
@@ -252,12 +249,12 @@ public class BookingService {
                         ? BigDecimal.ZERO
                         : (request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO))
                 .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
-                .bookedAt(LocalDateTime.now())
+                .bookedAt(LocalDateTime.now(APP_ZONE))
                 .cancellationPolicy(getDefaultCancellationPolicy())
                 .reminderSent(false)
                 .notes(request.getNotes())
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(APP_ZONE))
+                .updatedAt(LocalDateTime.now(APP_ZONE))
                 .isFreeDemo(isFreeDemo)
                 .build();
 
@@ -310,7 +307,6 @@ public class BookingService {
                 throw new IllegalArgumentException("Session end time must be after start time");
             }
 
-            // ✅ Per-slot time validation with same-day buffer
             validateBookingTime(slot.getSessionStartTime());
 
             sessionTimes.add(Booking.SessionTime.builder()
@@ -330,12 +326,12 @@ public class BookingService {
                 .amount(request.getTotalAmount())
                 .currency(request.getCurrency())
                 .status(BookingStatus.PENDING)
-                .bookedAt(LocalDateTime.now())
+                .bookedAt(LocalDateTime.now(APP_ZONE))
                 .cancellationPolicy(getDefaultCancellationPolicy())
                 .reminderSent(false)
                 .notes(request.getNotes())
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(APP_ZONE))
+                .updatedAt(LocalDateTime.now(APP_ZONE))
                 .isFreeDemo(false)
                 .build();
 
@@ -372,8 +368,8 @@ public class BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setPaymentId(paymentId);
         booking.setTransactionId(transactionId);
-        booking.setConfirmedAt(LocalDateTime.now());
-        booking.setUpdatedAt(LocalDateTime.now());
+        booking.setConfirmedAt(LocalDateTime.now(APP_ZONE));
+        booking.setUpdatedAt(LocalDateTime.now(APP_ZONE));
 
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking confirmed: {}", bookingId);
@@ -401,7 +397,7 @@ public class BookingService {
 
         if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
             booking.setStatus(BookingStatus.CONFIRMED);
-            booking.setConfirmedAt(LocalDateTime.now());
+            booking.setConfirmedAt(LocalDateTime.now(APP_ZONE));
             log.info("✅ Free demo booking auto-confirmed after teacher approval: {}", bookingId);
         } else {
             booking.setStatus(BookingStatus.PENDING_PAYMENT);
@@ -413,7 +409,7 @@ public class BookingService {
                     "Teacher's message: " + teacherMessage);
         }
 
-        booking.setUpdatedAt(LocalDateTime.now());
+        booking.setUpdatedAt(LocalDateTime.now(APP_ZONE));
 
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking approved: {} - Student: {}", bookingId, booking.getStudentName());
@@ -440,9 +436,9 @@ public class BookingService {
 
         booking.setStatus(BookingStatus.REJECTED);
         booking.setCancellationReason(rejectionReason);
-        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancelledAt(LocalDateTime.now(APP_ZONE));
         booking.setCancelledBy(teacherId);
-        booking.setUpdatedAt(LocalDateTime.now());
+        booking.setUpdatedAt(LocalDateTime.now(APP_ZONE));
 
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking rejected: {} - Reason: {}", bookingId, rejectionReason);
@@ -498,7 +494,7 @@ public class BookingService {
     public List<BookingDto> getStudentUpcomingBookings(String studentId) {
         log.info("📋 Getting upcoming bookings for student: {}", studentId);
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
         return bookingRepository.findByStudentIdAndSessionStartTimeBetween(
                         studentId, now, now.plusMonths(1))
                 .stream()
@@ -559,8 +555,8 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.COMPLETED);
-        booking.setCompletedAt(LocalDateTime.now());
-        booking.setUpdatedAt(LocalDateTime.now());
+        booking.setCompletedAt(LocalDateTime.now(APP_ZONE));
+        booking.setUpdatedAt(LocalDateTime.now(APP_ZONE));
 
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking completed: {}", bookingId);
@@ -589,9 +585,9 @@ public class BookingService {
 
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setCancellationReason(reason);
-        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancelledAt(LocalDateTime.now(APP_ZONE));
         booking.setCancelledBy(userId);
-        booking.setUpdatedAt(LocalDateTime.now());
+        booking.setUpdatedAt(LocalDateTime.now(APP_ZONE));
 
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking cancelled: {}", bookingId);
@@ -714,7 +710,7 @@ public class BookingService {
     // ─────────────────────────────────────────────
 
     private void validateBookingTime(LocalDateTime startTime) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
         if (startTime.isBefore(now)) {
             throw new IllegalArgumentException("Cannot book in the past");
@@ -737,17 +733,17 @@ public class BookingService {
         return teacherAvailabilityRepository.findByTeacherId(teacherId)
                 .map(TeacherAvailability::getTimezone)
                 .filter(tz -> tz != null && !tz.isBlank())
-                .orElse("Asia/Kolkata");
+                .orElse(APP_ZONE.getId());
     }
 
     /**
-     * FIX: Treat stored LocalDateTime as already in teacher's timezone.
-     * Do NOT use .atZone(UTC).withZoneSameInstant() — that shifts time by 5.5 hours in prod.
-     * Just attach the teacher timezone for formatting only.
+     * FIX: Treat stored LocalDateTime as already in the app timezone.
+     * Do not convert it again to UTC in prod.
+     * Only format it for display using the selected zone.
      */
     private BookingDto applyDisplayTimezone(Booking booking, BookingDto dto, String timezoneId) {
         if (timezoneId == null || timezoneId.isBlank()) {
-            timezoneId = "Asia/Kolkata";
+            timezoneId = APP_ZONE.getId();
         }
 
         ZoneId teacherZone = ZoneId.of(timezoneId);
