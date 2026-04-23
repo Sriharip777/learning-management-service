@@ -81,8 +81,19 @@ public class BookingService {
             throw new IllegalArgumentException("Session is not available for booking");
         }
 
-        if (session.getScheduledStartTime().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("Cannot book past sessions");
+        validateBookingTime(session.getScheduledStartTime());
+
+        // ✅ OPTIONAL (recommended)
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (session.getScheduledStartTime().toLocalDate().equals(now.toLocalDate())) {
+
+            if (session.getScheduledStartTime().isBefore(now.plusMinutes(30))) {
+                throw new IllegalArgumentException(
+                        "Too late to book this session (same-day buffer)"
+                );
+            }
         }
 
         if (bookingRepository.existsBySessionIdAndStudentId(request.getSessionId(), studentId)) {
@@ -160,9 +171,8 @@ public class BookingService {
             throw new IllegalArgumentException("Session start and end times are required");
         }
 
-        if (request.getSessionStartTime().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("Cannot book sessions in the past");
-        }
+
+        // ✅ ADD THIS (same-day support with buffer)
 
         if (request.getSessionEndTime().isBefore(request.getSessionStartTime())) {
             throw new IllegalArgumentException("Session end time must be after start time");
@@ -181,10 +191,14 @@ public class BookingService {
                 request.getSessionEndTime().plusMinutes(1)
         );
 
+        // ✅ Time validation
+        validateBookingTime(request.getSessionStartTime());
+
         if (!overlapping.isEmpty()) {
-            log.warn("⚠️ Found {} overlapping booking(s), but creating as PENDING for teacher approval",
-                    overlapping.size());
+            throw new IllegalArgumentException("Time slot already booked for this teacher");
         }
+
+// ✅ Availability check
 
         log.info("🆕 Creating ClassSession for one-on-one booking");
 
@@ -299,6 +313,9 @@ public class BookingService {
             if (slot.getSessionStartTime().isBefore(LocalDateTime.now())) {
                 throw new IllegalArgumentException("Cannot book sessions in the past");
             }
+
+            // ✅ SAME-DAY LOGIC
+
             if (slot.getSessionEndTime().isBefore(slot.getSessionStartTime())) {
                 throw new IllegalArgumentException("Session end time must be after start time");
             }
@@ -695,6 +712,22 @@ public class BookingService {
         } catch (Exception e) {
             log.error("❌ [BookingService] Failed to create video session for " +
                     "bookingId={}: {}", booking.getId(), e.getMessage());
+        }
+    }
+
+    private void validateBookingTime(LocalDateTime startTime) {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (startTime.isBefore(now)) {
+            throw new IllegalArgumentException("Cannot book in the past");
+        }
+
+        if (startTime.toLocalDate().equals(now.toLocalDate())) {
+            if (startTime.isBefore(now.plusMinutes(30))) {
+                throw new IllegalArgumentException(
+                        "Same-day booking requires at least 30 minutes advance"
+                );
+            }
         }
     }
 
