@@ -364,6 +364,39 @@ public class CourseService {
         return studentIds.stream().distinct().toList();
     }
 
+
+    public List<CourseDto> getStudentCourses(String studentId) {
+        List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
+                studentId,
+                CourseEnrollment.EnrollmentStatus.ACTIVE
+        );
+
+        if (enrollments.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> courseIds = enrollments.stream()
+                .map(CourseEnrollment::getCourseId)
+                .distinct()
+                .toList();
+
+        return courseRepository.findAllById(courseIds).stream()
+                .map(course -> {
+                    Grade grade = course.getGradeId() != null
+                            ? gradeRepository.findById(course.getGradeId()).orElse(null)
+                            : null;
+                    Subject subject = course.getSubjectId() != null
+                            ? subjectRepository.findById(course.getSubjectId()).orElse(null)
+                            : null;
+                    List<Topic> topics = course.getTopicIds() != null
+                            ? topicRepository.findAllById(course.getTopicIds())
+                            : List.of();
+
+                    return toDtoWithMasterData(course, grade, subject, topics);
+                })
+                .toList();
+    }
+
     // =========================
     //       DTO HELPERS
     // =========================

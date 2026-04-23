@@ -10,6 +10,7 @@ import java.util.List;
 public interface ResourceRepository extends MongoRepository<Resource, String> {
     List<Resource> findByIsActiveTrueOrderByUploadedAtDesc();
     List<Resource> findByTopicIdAndIsActiveTrueOrderByUploadedAtDesc(String topicId);
+    List<Resource> findByTopicIdInAndIsActiveTrueOrderByUploadedAtDesc(List<String> topicIds);
     List<Resource> findByGradeIdAndIsActiveTrueOrderByUploadedAtDesc(String gradeId);
     List<Resource> findByGradeIdAndSubjectIdAndIsActiveTrueOrderByUploadedAtDesc(String gradeId, String subjectId);
     List<Resource> findByGradeIdAndSubjectIdAndTopicIdAndIsActiveTrueOrderByUploadedAtDesc(String gradeId, String subjectId, String topicId);

@@ -96,6 +96,21 @@ public class ResourceController {
     }
 
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STUDENT', 'ROLE_PARENT', 'ROLE_TEACHER')")
+    @GetMapping("/student/{studentId}")
+    public ResponseEntity<List<ResourceDto>> getResourcesForStudent(@PathVariable String studentId) {
+        return ResponseEntity.ok(resourceService.getResourcesForStudent(studentId));
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STUDENT', 'ROLE_PARENT', 'ROLE_TEACHER')")
+    @GetMapping("/student/{studentId}/course/{courseId}")
+    public ResponseEntity<List<ResourceDto>> getResourcesForStudentCourse(
+            @PathVariable String studentId,
+            @PathVariable String courseId) {
+        return ResponseEntity.ok(resourceService.getResourcesForStudentCourse(studentId, courseId));
+    }
+
+
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STUDENT', 'ROLE_PARENT', 'ROLE_TEACHER')")
     @GetMapping("/{id}")
     public ResponseEntity<ResourceDto> getResourceById(@PathVariable String id) {
         return ResponseEntity.ok(resourceService.getResourceById(id));
@@ -261,4 +276,15 @@ public class ResourceController {
         log.info("✅ Resource uploaded successfully for classSession: {}", classSessionId);
         return ResponseEntity.status(HttpStatus.CREATED).body(resource);
     }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_PARENT', 'ROLE_ADMIN')")
+    @GetMapping("/parent/student/{studentId}/course/{courseId}")
+    public ResponseEntity<List<ResourceDto>> getResourcesForChildCourse(
+            @PathVariable String studentId,
+            @PathVariable String courseId) {
+        return ResponseEntity.ok(
+                resourceService.getResourcesForStudentCourse(studentId, courseId));
+    }
+
+
 }

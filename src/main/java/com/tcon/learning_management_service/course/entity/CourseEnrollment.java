@@ -54,6 +54,8 @@ public class CourseEnrollment {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    private String sessionMode;
+
     public enum EnrollmentStatus {
         PENDING,
         ACTIVE,

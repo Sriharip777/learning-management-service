@@ -22,16 +22,19 @@ public class FeignClientConfiguration {
                 if (attributes != null) {
                     HttpServletRequest request = attributes.getRequest();
 
-                    // Forward Authorization header
                     String authHeader = request.getHeader("Authorization");
                     if (authHeader != null && !authHeader.isEmpty()) {
                         template.header("Authorization", authHeader);
                     }
 
-                    // Forward X-User-Id header
                     String userIdHeader = request.getHeader("X-User-Id");
                     if (userIdHeader != null && !userIdHeader.isEmpty()) {
                         template.header("X-User-Id", userIdHeader);
+                    }
+
+                    String userRoleHeader = request.getHeader("X-User-Role");
+                    if (userRoleHeader != null && !userRoleHeader.isEmpty()) {
+                        template.header("X-User-Role", userRoleHeader);
                     }
                 }
             }

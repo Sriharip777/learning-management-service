@@ -166,11 +166,13 @@ public class CourseController {
         String studentName = (String) enrollmentData.get("studentName");
         String studentEmail = (String) enrollmentData.get("studentEmail");
         String paymentId = (String) enrollmentData.get("paymentId");
+        String sessionMode = (String) enrollmentData.getOrDefault("sessionMode", "GROUP"); // ✅ NEW
         Double amountPaid = ((Number) enrollmentData.get("amountPaid")).doubleValue();
 
         CourseEnrollment enrollment = enrollmentService.enrollStudent(
                 courseId, studentId, studentName, studentEmail,
-                paymentId, java.math.BigDecimal.valueOf(amountPaid)
+                paymentId, java.math.BigDecimal.valueOf(amountPaid),
+                sessionMode  // ✅ NEW
         );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(enrollment);
@@ -283,4 +285,19 @@ public class CourseController {
         return courseService.unassignTeacherFromCourse(courseId, teacherUserId, adminId);
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STUDENT', 'ROLE_PARENT', 'ROLE_TEACHER')")
+    @GetMapping("/student/{studentId}/courses")
+    public ResponseEntity<List<CourseDto>> getStudentCourses(@PathVariable String studentId) {
+        List<CourseDto> courses = courseService.getStudentCourses(studentId);
+        return ResponseEntity.ok(courses);
+    }
+
+    @GetMapping("/student/{studentId}/courses/parent")
+    public ResponseEntity<List<CourseDto>> getStudentCoursesForParent(
+            @PathVariable String studentId,
+            @RequestHeader("X-User-Id") String parentId) {
+        log.info("Parent {} fetching courses for student {}", parentId, studentId);
+        List<CourseDto> courses = courseService.getStudentCourses(studentId);
+        return ResponseEntity.ok(courses);
+    }
 }

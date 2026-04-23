@@ -30,7 +30,8 @@ public class CourseEnrollmentService {
                                           String studentName,
                                           String studentEmail,
                                           String paymentId,
-                                          BigDecimal amountPaid) {
+                                          BigDecimal amountPaid,
+                                          String sessionMode ) {
         log.info("Enrolling student {} in course {}", studentId, courseId);
 
         Course course = courseRepository.findById(courseId)
@@ -40,7 +41,10 @@ public class CourseEnrollmentService {
             throw new IllegalArgumentException("Course is not available for enrollment");
         }
 
-        if (enrollmentRepository.existsByCourseIdAndStudentId(courseId, studentId)) {
+        if (enrollmentRepository.existsByCourseIdAndStudentIdAndStatus(
+                courseId,
+                studentId,
+                CourseEnrollment.EnrollmentStatus.ACTIVE)) {
             throw new IllegalArgumentException("Student is already enrolled in this course");
         }
 
@@ -54,6 +58,7 @@ public class CourseEnrollmentService {
                 .studentId(studentId)
                 .studentName(studentName)
                 .studentEmail(studentEmail)
+                .sessionMode(sessionMode != null ? sessionMode : "GROUP")
                 .status(CourseEnrollment.EnrollmentStatus.ACTIVE)
                 .enrolledAt(LocalDateTime.now())
                 .amountPaid(amountPaid)

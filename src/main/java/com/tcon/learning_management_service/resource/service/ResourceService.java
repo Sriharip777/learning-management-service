@@ -1,8 +1,6 @@
 package com.tcon.learning_management_service.resource.service;
 
-import com.tcon.learning_management_service.course.entity.Grade;
-import com.tcon.learning_management_service.course.entity.Subject;
-import com.tcon.learning_management_service.course.entity.Topic;
+import com.tcon.learning_management_service.course.entity.*;
 import com.tcon.learning_management_service.course.repository.GradeRepository;
 import com.tcon.learning_management_service.course.repository.SubjectRepository;
 import com.tcon.learning_management_service.course.repository.TopicRepository;
@@ -14,6 +12,8 @@ import com.tcon.learning_management_service.resource.entity.Resource;
 import com.tcon.learning_management_service.resource.entity.ResourceFile;
 import com.tcon.learning_management_service.resource.exception.ResourceNotFoundException;
 import com.tcon.learning_management_service.resource.repository.ResourceRepository;
+import com.tcon.learning_management_service.course.repository.CourseEnrollmentRepository;
+import com.tcon.learning_management_service.course.repository.CourseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +34,8 @@ public class ResourceService {
     private final SubjectRepository subjectRepository;
     private final TopicRepository topicRepository;
     private final ResourceStorageService resourceStorageService;
+    private final CourseRepository courseRepository;
+    private final CourseEnrollmentRepository enrollmentRepository;
 
     public ResourceDto createResource(String title,
                                       String description,
@@ -217,6 +219,39 @@ public class ResourceService {
         return toDto(saved);
     }
 
+    public List<ResourceDto> getResourcesForStudent(String studentId) {
+        List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
+                studentId,
+                CourseEnrollment.EnrollmentStatus.ACTIVE
+        );
+
+        if (enrollments.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> courseIds = enrollments.stream()
+                .map(CourseEnrollment::getCourseId)
+                .distinct()
+                .toList();
+
+        List<Course> courses = courseRepository.findAllById(courseIds);
+
+        List<String> allowedTopicIds = courses.stream()
+                .filter(course -> course.getTopicIds() != null)
+                .flatMap(course -> course.getTopicIds().stream())
+                .distinct()
+                .toList();
+
+        if (allowedTopicIds.isEmpty()) {
+            return List.of();
+        }
+
+        return resourceRepository.findByTopicIdInAndIsActiveTrueOrderByUploadedAtDesc(allowedTopicIds)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     private void validatePdf(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
@@ -278,5 +313,29 @@ public class ResourceService {
                 files,
                 createdBy
         );
+    }
+
+    public List<ResourceDto> getResourcesForStudentCourse(String studentId, String courseId) {
+        CourseEnrollment enrollment = enrollmentRepository
+                .findByCourseIdAndStudentId(courseId, studentId)
+                .orElseThrow(() -> new IllegalArgumentException("Student is not enrolled in this course"));
+
+        if (enrollment.getStatus() != CourseEnrollment.EnrollmentStatus.ACTIVE) {
+            return List.of();
+        }
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        List<String> topicIds = course.getTopicIds() == null ? List.of() : course.getTopicIds();
+
+        if (topicIds.isEmpty()) {
+            return List.of();
+        }
+
+        return resourceRepository.findByTopicIdInAndIsActiveTrueOrderByUploadedAtDesc(topicIds)
+                .stream()
+                .map(this::toDto)
+                .toList();
     }
 }
