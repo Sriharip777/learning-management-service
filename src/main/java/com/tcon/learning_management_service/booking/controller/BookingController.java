@@ -266,6 +266,7 @@ public class BookingController {
         }
     }
 
+
     @PostMapping("/{bookingId}/reject")
     public ResponseEntity<?> rejectBooking(
             @PathVariable String bookingId,

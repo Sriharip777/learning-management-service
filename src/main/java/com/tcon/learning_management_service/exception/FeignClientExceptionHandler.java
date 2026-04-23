@@ -17,9 +17,7 @@ public class FeignClientExceptionHandler {
     // GENERIC FEIGN ERROR
     // ─────────────────────────────────────────────
     @ExceptionHandler(FeignException.class)
-    public ResponseEntity<Map<String, String>> handleFeignException(
-            FeignException e
-    ) {
+    public ResponseEntity<Map<String, String>> handleFeignException(FeignException e) {
         log.error("❌ Feign client error: status={}, message={}",
                 e.status(), e.getMessage());
 
@@ -38,9 +36,7 @@ public class FeignClientExceptionHandler {
     // 404 — Session not found in video-service
     // ─────────────────────────────────────────────
     @ExceptionHandler(FeignException.NotFound.class)
-    public ResponseEntity<Map<String, String>> handleFeignNotFound(
-            FeignException.NotFound e
-    ) {
+    public ResponseEntity<Map<String, String>> handleFeignNotFound(FeignException.NotFound e) {
         log.warn("⚠️ Feign 404: {}", e.getMessage());
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
@@ -63,38 +59,6 @@ public class FeignClientExceptionHandler {
                 .body(Map.of(
                         "error", "Video service is currently unavailable",
                         "message", "Please try again later"
-                ));
-    }
-
-    // ─────────────────────────────────────────────
-    // GENERAL RUNTIME ERROR
-    // ─────────────────────────────────────────────
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, String>> handleRuntimeException(
-            RuntimeException e
-    ) {
-        log.error("❌ Runtime error: {}", e.getMessage(), e);
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of(
-                        "error", "Internal server error",
-                        "message", e.getMessage()
-                ));
-    }
-
-    // ─────────────────────────────────────────────
-    // ILLEGAL ARGUMENT (validation errors)
-    // ─────────────────────────────────────────────
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(
-            IllegalArgumentException e
-    ) {
-        log.warn("⚠️ Validation error: {}", e.getMessage());
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(Map.of(
-                        "error", "Validation failed",
-                        "message", e.getMessage()
                 ));
     }
 

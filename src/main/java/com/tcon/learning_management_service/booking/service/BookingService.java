@@ -385,14 +385,26 @@ public class BookingService {
         log.info("👍 Teacher {} approving booking {}", teacherId, bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
+                .orElseThrow(() -> {
+                    log.warn("❌ Booking not found for approve: {}", bookingId);
+                    return new IllegalArgumentException("Booking not found: " + bookingId);
+                });
 
-        if (!booking.getTeacherId().equals(teacherId)) {
+        if (booking.getTeacherId() == null || !booking.getTeacherId().equals(teacherId)) {
+            log.warn("❌ Unauthorized approve attempt. bookingId={}, bookingTeacherId={}, headerTeacherId={}",
+                    bookingId, booking.getTeacherId(), teacherId);
             throw new IllegalArgumentException("Unauthorized: Teacher does not own this booking");
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
+            log.warn("❌ Invalid status for approve. bookingId={}, status={}", bookingId, booking.getStatus());
             throw new IllegalArgumentException("Only pending bookings can be approved");
+        }
+
+        // Ensure sessionId exists for downstream (events, video)
+        if (booking.getSessionId() == null || booking.getSessionId().isBlank()) {
+            log.error("❌ Cannot approve booking without sessionId. bookingId={}", bookingId);
+            throw new IllegalStateException("Cannot approve booking without linked session");
         }
 
         if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
@@ -401,9 +413,10 @@ public class BookingService {
             log.info("✅ Free demo booking auto-confirmed after teacher approval: {}", bookingId);
         } else {
             booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            log.info("✅ Booking moved to PENDING_PAYMENT after teacher approval: {}", bookingId);
         }
 
-        if (teacherMessage != null && !teacherMessage.isEmpty()) {
+        if (teacherMessage != null && !teacherMessage.isBlank()) {
             String existingNotes = booking.getNotes() != null ? booking.getNotes() : "";
             booking.setNotes(existingNotes + (existingNotes.isEmpty() ? "" : "\n\n") +
                     "Teacher's message: " + teacherMessage);
@@ -414,10 +427,18 @@ public class BookingService {
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking approved: {} - Student: {}", bookingId, booking.getStudentName());
 
-        eventPublisher.publishBookingApproved(updated);
+        try {
+            eventPublisher.publishBookingApproved(updated);
+            log.info("📤 BOOKING_APPROVED event published for booking {}", bookingId);
+        } catch (Exception e) {
+            // Log but don't fail the HTTP request because of Kafka/event issues
+            log.error("❌ Failed to publish BOOKING_APPROVED event for booking {}: {}",
+                    bookingId, e.getMessage(), e);
+        }
 
         return toDto(updated);
     }
+
 
     @Transactional
     public BookingDto rejectBooking(String bookingId, String teacherId, String rejectionReason) {
