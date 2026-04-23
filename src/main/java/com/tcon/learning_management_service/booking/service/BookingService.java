@@ -42,7 +42,14 @@ public class BookingService {
     private final BookingLockService lockService;
     private final DemoLimitService demoLimitService;
     private final VideoServiceClient videoServiceClient;
-    private final TeacherAvailabilityRepository teacherAvailabilityRepository; // ✅ NEW
+    private final TeacherAvailabilityRepository teacherAvailabilityRepository;
+
+    // ─────────────────────────────────────────────
+    // Constants
+    // ─────────────────────────────────────────────
+
+    private static final DateTimeFormatter DISPLAY_FMT =
+            DateTimeFormatter.ofPattern("MMM d, hh:mm a");
 
     // ==================== CREATE BOOKING ====================
 
@@ -83,16 +90,10 @@ public class BookingService {
 
         validateBookingTime(session.getScheduledStartTime());
 
-        // ✅ OPTIONAL (recommended)
-
         LocalDateTime now = LocalDateTime.now();
-
         if (session.getScheduledStartTime().toLocalDate().equals(now.toLocalDate())) {
-
             if (session.getScheduledStartTime().isBefore(now.plusMinutes(30))) {
-                throw new IllegalArgumentException(
-                        "Too late to book this session (same-day buffer)"
-                );
+                throw new IllegalArgumentException("Too late to book this session (same-day buffer)");
             }
         }
 
@@ -171,12 +172,12 @@ public class BookingService {
             throw new IllegalArgumentException("Session start and end times are required");
         }
 
-
-        // ✅ ADD THIS (same-day support with buffer)
-
         if (request.getSessionEndTime().isBefore(request.getSessionStartTime())) {
             throw new IllegalArgumentException("Session end time must be after start time");
         }
+
+        // ✅ Time validation with same-day buffer
+        validateBookingTime(request.getSessionStartTime());
 
         Integer duration = (int) java.time.Duration.between(
                 request.getSessionStartTime(),
@@ -191,14 +192,9 @@ public class BookingService {
                 request.getSessionEndTime().plusMinutes(1)
         );
 
-        // ✅ Time validation
-        validateBookingTime(request.getSessionStartTime());
-
         if (!overlapping.isEmpty()) {
             throw new IllegalArgumentException("Time slot already booked for this teacher");
         }
-
-// ✅ Availability check
 
         log.info("🆕 Creating ClassSession for one-on-one booking");
 
@@ -285,7 +281,7 @@ public class BookingService {
         return toDto(saved);
     }
 
-    // ==================== CREATE BATCH BOOKING (NEW) ====================
+    // ==================== CREATE BATCH BOOKING ====================
 
     @Transactional
     public BookingDto createBatchBooking(String studentId, BatchBookingRequest request) {
@@ -310,15 +306,12 @@ public class BookingService {
             if (slot.getSessionStartTime() == null || slot.getSessionEndTime() == null) {
                 throw new IllegalArgumentException("Session start and end times are required");
             }
-            if (slot.getSessionStartTime().isBefore(LocalDateTime.now())) {
-                throw new IllegalArgumentException("Cannot book sessions in the past");
-            }
-
-            // ✅ SAME-DAY LOGIC
-
             if (slot.getSessionEndTime().isBefore(slot.getSessionStartTime())) {
                 throw new IllegalArgumentException("Session end time must be after start time");
             }
+
+            // ✅ Per-slot time validation with same-day buffer
+            validateBookingTime(slot.getSessionStartTime());
 
             sessionTimes.add(Booking.SessionTime.builder()
                     .startTime(slot.getSessionStartTime())
@@ -389,7 +382,7 @@ public class BookingService {
         return toDto(updated);
     }
 
-    // ==================== TEACHER APPROVE/REJECT ====================
+    // ==================== TEACHER APPROVE / REJECT ====================
 
     @Transactional
     public BookingDto approveBooking(String bookingId, String teacherId, String teacherMessage) {
@@ -487,10 +480,10 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findByTeacherId(teacherId);
         log.info("✅ Found {} bookings for teacher", bookings.size());
 
-        String timezoneId = getTeacherTimezone(teacherId); // ✅ NEW
+        String timezoneId = getTeacherTimezone(teacherId);
 
         return bookings.stream()
-                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId)) // ✅ NEW
+                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId))
                 .collect(Collectors.toList());
     }
 
@@ -545,10 +538,10 @@ public class BookingService {
                     booking.getAmount());
         });
 
-        String timezoneId = getTeacherTimezone(teacherId); // ✅ NEW
+        String timezoneId = getTeacherTimezone(teacherId);
 
         return pending.stream()
-                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId)) // ✅ NEW
+                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId))
                 .collect(Collectors.toList());
     }
 
@@ -669,6 +662,7 @@ public class BookingService {
     // ─────────────────────────────────────────────────────
     // PRIVATE: Auto-create video session after booking is confirmed
     // ─────────────────────────────────────────────────────
+
     private void createVideoSessionSafe(Booking booking) {
         log.info("🎥 [BookingService] Auto-creating video session for bookingId={}",
                 booking.getId());
@@ -715,6 +709,10 @@ public class BookingService {
         }
     }
 
+    // ─────────────────────────────────────────────
+    // PRIVATE: Validate booking time with same-day buffer
+    // ─────────────────────────────────────────────
+
     private void validateBookingTime(LocalDateTime startTime) {
         LocalDateTime now = LocalDateTime.now();
 
@@ -732,12 +730,8 @@ public class BookingService {
     }
 
     // ─────────────────────────────────────────────
-    // ✅ Timezone helpers for teacher display
+    // PRIVATE: Timezone helpers for teacher display
     // ─────────────────────────────────────────────
-
-    private static final ZoneId UTC = ZoneId.of("UTC");
-    private static final DateTimeFormatter DISPLAY_FMT =
-            DateTimeFormatter.ofPattern("MMM d, hh:mm a");
 
     private String getTeacherTimezone(String teacherId) {
         return teacherAvailabilityRepository.findByTeacherId(teacherId)
@@ -746,37 +740,36 @@ public class BookingService {
                 .orElse("Asia/Kolkata");
     }
 
+    /**
+     * FIX: Treat stored LocalDateTime as already in teacher's timezone.
+     * Do NOT use .atZone(UTC).withZoneSameInstant() — that shifts time by 5.5 hours in prod.
+     * Just attach the teacher timezone for formatting only.
+     */
     private BookingDto applyDisplayTimezone(Booking booking, BookingDto dto, String timezoneId) {
         if (timezoneId == null || timezoneId.isBlank()) {
             timezoneId = "Asia/Kolkata";
         }
 
-        ZoneId targetZone = ZoneId.of(timezoneId);
+        ZoneId teacherZone = ZoneId.of(timezoneId);
 
         if (booking.getSessionStartTime() != null) {
-            ZonedDateTime z = booking.getSessionStartTime()
-                    .atZone(UTC)
-                    .withZoneSameInstant(targetZone);
+            ZonedDateTime z = booking.getSessionStartTime().atZone(teacherZone);
             dto.setDisplaySessionStartTime(z.format(DISPLAY_FMT));
         }
 
         if (booking.getSessionEndTime() != null) {
-            ZonedDateTime z = booking.getSessionEndTime()
-                    .atZone(UTC)
-                    .withZoneSameInstant(targetZone);
+            ZonedDateTime z = booking.getSessionEndTime().atZone(teacherZone);
             dto.setDisplaySessionEndTime(z.format(DISPLAY_FMT));
         }
 
         if (booking.getBookedAt() != null) {
-            ZonedDateTime z = booking.getBookedAt()
-                    .atZone(UTC)
-                    .withZoneSameInstant(targetZone);
+            ZonedDateTime z = booking.getBookedAt().atZone(teacherZone);
             dto.setDisplayBookedAt(z.format(DISPLAY_FMT));
         }
 
         dto.setDisplayTimezoneId(timezoneId);
         dto.setDisplayTimezoneAbbreviation(
-                ZonedDateTime.now(targetZone).format(DateTimeFormatter.ofPattern("z"))
+                ZonedDateTime.now(teacherZone).format(DateTimeFormatter.ofPattern("z"))
         );
 
         return dto;
