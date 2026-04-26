@@ -90,11 +90,9 @@ kafka:
 video:
   service:
     url: ${VIDEO_SERVICE_URL}
-
 user:
   service:
     url: ${USER_SERVICE_URL}
-
 auth:
   service:
     url: ${AUTH_SERVICE_URL}
@@ -117,7 +115,6 @@ resilience4j:
         slowCallDurationThreshold: 5s
         slowCallRateThreshold: 50
         eventConsumerBufferSize: 10
-
       user-service:
         registerHealthIndicator: true
         slidingWindowSize: 10
@@ -135,12 +132,27 @@ resilience4j:
       user-service:
         timeoutDuration: 10s
 
-# Cloud Run production: use direct service URLs, not Eureka discovery
+# Eureka client – enabled for prod
 eureka:
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    enabled: ${EUREKA_ENABLED:true}
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+    registry-fetch-interval-seconds: 15
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:learning-management-service}
+    prefer-ip-address: false
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME:learning-management-service}:${server.port}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
+    home-page-url: https://${eureka.instance.hostname}/
+    status-page-url: https://${eureka.instance.hostname}/actuator/info
+    health-check-url: https://${eureka.instance.hostname}/actuator/health
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 90
 
 management:
   endpoints:
