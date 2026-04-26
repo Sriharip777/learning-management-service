@@ -12,8 +12,10 @@ public class VideoServiceClientFallback implements VideoServiceClient {
 
     @Override
     public VideoSessionCreateResponse createVideoSession(VideoSessionCreateRequest request) {
-        log.error("Fallback triggered: createVideoSession failed for bookingId={}",
-                request != null ? request.getBookingId() : "null");
+        log.error("Fallback triggered: createVideoSession failed for bookingId={}, classSessionId={}, durationMinutes={}",
+                request != null ? request.getBookingId() : null,
+                request != null ? request.getClassSessionId() : null,
+                request != null ? request.getDurationMinutes() : null);
         return null;
     }
 

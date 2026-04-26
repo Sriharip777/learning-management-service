@@ -37,7 +37,7 @@ spring:
       auto-index-creation: true
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAPSERVERS}
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
       auto-offset-reset: earliest
@@ -76,18 +76,17 @@ spring:
           video-service:
             connectTimeout: ${FEIGN_VIDEO_CONNECT_TIMEOUT:10000}
             readTimeout: ${FEIGN_VIDEO_READ_TIMEOUT:10000}
-            url: ${VIDEO_SERVICE_URL}
+            loggerLevel: ${FEIGN_LOG_LEVEL:BASIC}
           user-service:
             connectTimeout: ${FEIGN_USER_CONNECT_TIMEOUT:10000}
             readTimeout: ${FEIGN_USER_READ_TIMEOUT:10000}
+            loggerLevel: ${FEIGN_LOG_LEVEL:BASIC}
 
-# Kafka Topic Names
 kafka:
   topics:
     booking-events: ${KAFKA_TOPIC_BOOKING_EVENTS:booking-events}
     session-events: ${KAFKA_TOPIC_SESSION_EVENTS:session-events}
 
-# External Service URLs
 video:
   service:
     url: ${VIDEO_SERVICE_URL}
@@ -100,12 +99,10 @@ auth:
   service:
     url: ${AUTH_SERVICE_URL}
 
-# Feign Circuit Breaker
 feign:
   circuitbreaker:
     enabled: true
 
-# Resilience4j
 resilience4j:
   circuitbreaker:
     instances:
@@ -138,34 +135,13 @@ resilience4j:
       user-service:
         timeoutDuration: 10s
 
-# Eureka
+# Cloud Run production: use direct service URLs, not Eureka discovery
 eureka:
   client:
-    enabled: ${EUREKA_ENABLED:true}
-    register-with-eureka: true
-    fetch-registry: true
-    service-url:
-      defaultZone: ${EUREKA_URL}
-    registry-fetch-interval-seconds: 15
-    eureka-server-connect-timeout-seconds: 10
-    eureka-server-read-timeout-seconds: 10
-    healthcheck:
-      enabled: false
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
 
-  instance:
-    hostname: ${EUREKA_INSTANCE_HOSTNAME}
-    prefer-ip-address: false
-    instance-id: ${spring.application.name}:${eureka.instance.hostname}
-    non-secure-port-enabled: false
-    secure-port-enabled: true
-    secure-port: 443
-    home-page-url: https://${eureka.instance.hostname}/
-    status-page-url: https://${eureka.instance.hostname}/actuator/info
-    health-check-url: https://${eureka.instance.hostname}/actuator/health
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 90
-
-# Actuator
 management:
   endpoints:
     web:
@@ -186,7 +162,6 @@ management:
       prometheus:
         enabled: true
 
-# Logging
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}

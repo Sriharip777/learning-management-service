@@ -630,20 +630,45 @@ public class BookingService {
     }
 
     private void createVideoSessionSafe(Booking booking) {
-        log.info("🎥 [BookingService] Auto-creating video session for bookingId={}", booking.getId());
         try {
-            if (!hasText(booking.getSessionId())) {
-                log.warn("⚠️ [BookingService] Skipping video session creation because sessionId is missing for bookingId={}",
-                        booking.getId());
+            if (booking == null) {
+                log.warn("Cannot create video session: booking is null");
                 return;
             }
 
-            String rawId = booking.getId().replace("-", "");
-            String channelName = "session_" + rawId.substring(0, Math.min(12, rawId.length()));
+            if (!hasText(booking.getId())) {
+                log.warn("Cannot create video session: booking id is missing");
+                return;
+            }
 
-            LocalDateTime endTime = booking.getSessionEndTime();
-            if (endTime == null && booking.getSessionStartTime() != null && booking.getDurationMinutes() != null) {
-                endTime = booking.getSessionStartTime().plusMinutes(booking.getDurationMinutes());
+            if (!hasText(booking.getSessionId())) {
+                log.warn("Cannot create video session: classSessionId is missing for booking {}", booking.getId());
+                return;
+            }
+
+            if (!hasText(booking.getTeacherId())) {
+                log.warn("Cannot create video session: teacher id is missing for booking {}", booking.getId());
+                return;
+            }
+
+            if (!hasText(booking.getStudentId())) {
+                log.warn("Cannot create video session: student id is missing for booking {}", booking.getId());
+                return;
+            }
+
+            if (booking.getSessionStartTime() == null) {
+                log.warn("Cannot create video session: session start time is missing for booking {}", booking.getId());
+                return;
+            }
+
+            if (booking.getSessionEndTime() == null) {
+                log.warn("Cannot create video session: session end time is missing for booking {}", booking.getId());
+                return;
+            }
+
+            if (booking.getDurationMinutes() == null || booking.getDurationMinutes() <= 0) {
+                log.warn("Cannot create video session: durationMinutes is missing/invalid for booking {}", booking.getId());
+                return;
             }
 
             VideoSessionCreateRequest videoRequest = VideoSessionCreateRequest.builder()
@@ -651,26 +676,42 @@ public class BookingService {
                     .classSessionId(booking.getSessionId())
                     .teacherId(booking.getTeacherId())
                     .studentId(booking.getStudentId())
-                    .subject(booking.getSubject())
+                    .parentId(booking.getParentId())
+                    .subject(hasText(booking.getSubject()) ? booking.getSubject() : "One-on-One Class")
                     .scheduledStartTime(booking.getSessionStartTime())
-                    .scheduledEndTime(endTime)
-                    .channelName(channelName)
+                    .scheduledEndTime(booking.getSessionEndTime())
+                    .durationMinutes(booking.getDurationMinutes())
+                    .channelName("booking-" + booking.getId())
                     .recordingEnabled(true)
+                    .whiteboardEnabled(true)
+                    .chatEnabled(true)
                     .build();
+
+            log.info("📹 Creating video session for booking: {}, classSessionId: {}, teacherId: {}, studentId: {}, startTime: {}, endTime: {}, durationMinutes: {}",
+                    booking.getId(),
+                    booking.getSessionId(),
+                    booking.getTeacherId(),
+                    booking.getStudentId(),
+                    booking.getSessionStartTime(),
+                    booking.getSessionEndTime(),
+                    booking.getDurationMinutes());
 
             VideoSessionCreateResponse response = videoServiceClient.createVideoSession(videoRequest);
 
-            if (response != null) {
-                log.info("✅ [BookingService] Video session created: id={}, channel={}",
-                        response.getId(), response.getChannelName());
-            } else {
-                log.warn("⚠️ [BookingService] Video session creation returned null (video-service may be down). bookingId={}",
-                        booking.getId());
+            if (response == null) {
+                log.error("❌ Video service returned null response for booking {}", booking.getId());
+                return;
             }
 
+            log.info("✅ Video session created successfully. bookingId={}, videoSessionId={}, channelName={}, canJoin={}",
+                    booking.getId(),
+                    response.getId(),
+                    response.getChannelName(),
+                    response.getCanJoin());
+
         } catch (Exception e) {
-            log.error("❌ [BookingService] Failed to create video session for bookingId={}: {}",
-                    booking.getId(), e.getMessage(), e);
+            log.error("❌ Failed to create video session for booking {}: {}",
+                    booking != null ? booking.getId() : null, e.getMessage(), e);
         }
     }
 
