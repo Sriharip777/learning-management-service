@@ -146,10 +146,22 @@ public class BookingService {
 
         validateDirectBookingRequest(request);
 
+        ZoneId userZone = ZoneId.of("Asia/Kolkata");
+
+        LocalDateTime startUtc = request.getSessionStartTime()
+                .atZone(userZone)
+                .withZoneSameInstant(ZoneId.of("UTC"))
+                .toLocalDateTime();
+
+        LocalDateTime endUtc = request.getSessionEndTime()
+                .atZone(userZone)
+                .withZoneSameInstant(ZoneId.of("UTC"))
+                .toLocalDateTime();
+
         String lockKey = buildTeacherSlotLockKey(
                 request.getTeacherId(),
-                request.getSessionStartTime(),
-                request.getSessionEndTime()
+                startUtc,
+                endUtc
         );
 
         if (!lockService.acquireLock(lockKey, studentId)) {
@@ -159,13 +171,13 @@ public class BookingService {
         try {
             ensureNoTeacherOverlap(
                     request.getTeacherId(),
-                    request.getSessionStartTime(),
-                    request.getSessionEndTime()
+                    startUtc,
+                    endUtc
             );
 
             int duration = resolveDurationMinutes(
-                    request.getSessionStartTime(),
-                    request.getSessionEndTime()
+                    startUtc,
+                    endUtc
             );
 
             log.info("📏 Calculated duration: {} minutes", duration);
@@ -180,8 +192,8 @@ public class BookingService {
                     .title(hasText(request.getSubject()) ? request.getSubject() : "One-on-One Class")
                     .description("Direct booking with " + request.getStudentName())
                     .status(ClassStatus.SCHEDULED)
-                    .scheduledStartTime(request.getSessionStartTime())
-                    .scheduledEndTime(request.getSessionEndTime())
+                    .scheduledStartTime(startUtc)
+                    .scheduledEndTime(endUtc)
                     .durationMinutes(duration)
                     .maxParticipants(1)
                     .participants(new ArrayList<>())
@@ -208,8 +220,8 @@ public class BookingService {
                     .parentId(request.getParentId())
                     .subject(request.getSubject())
                     .durationMinutes(duration)
-                    .sessionStartTime(request.getSessionStartTime())
-                    .sessionEndTime(request.getSessionEndTime())
+                    .sessionStartTime(startUtc)
+                    .sessionEndTime(endUtc)
                     .status(BookingStatus.PENDING)
                     .amount(isFreeDemo ? BigDecimal.ZERO : defaultAmount(request.getAmount()))
                     .currency(defaultCurrency(request.getCurrency()))
@@ -800,23 +812,18 @@ public class BookingService {
         }
     }
 
-    private void ensureNoTeacherOverlap(String teacherId, LocalDateTime requestedStart, LocalDateTime requestedEnd) {
-        List<ClassSession> nearbySessions = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
-                teacherId,
-                requestedStart.minusHours(4),
-                requestedEnd.plusHours(4)
-        );
+    private void ensureNoTeacherOverlap(String teacherId,
+                                        LocalDateTime requestedStart,
+                                        LocalDateTime requestedEnd) {
 
-        boolean hasOverlap = nearbySessions.stream()
-                .filter(session -> session.getStatus() == ClassStatus.SCHEDULED)
-                .anyMatch(session ->
-                        session.getScheduledStartTime() != null &&
-                                session.getScheduledEndTime() != null &&
-                                requestedStart.isBefore(session.getScheduledEndTime()) &&
-                                requestedEnd.isAfter(session.getScheduledStartTime())
+        List<ClassSession> overlappingSessions =
+                sessionRepository.findOverlappingSessions(
+                        teacherId,
+                        requestedStart,
+                        requestedEnd
                 );
 
-        if (hasOverlap) {
+        if (!overlappingSessions.isEmpty()) {
             throw new IllegalArgumentException("Time slot already booked for this teacher");
         }
     }
