@@ -45,4 +45,18 @@ public interface ClassSessionRepository extends MongoRepository<ClassSession, St
     Long countByTeacherIdAndStatus(String teacherId, ClassStatus status);
 
     boolean existsByIdAndTeacherId(String id, String teacherId);
+
+    @Query("""
+{
+  "teacherId": ?0,
+  "status": "SCHEDULED",
+  "scheduledStartTime": { $lt: ?2 },
+  "scheduledEndTime": { $gt: ?1 }
+}
+""")
+    List<ClassSession> findOverlappingSessions(
+            String teacherId,
+            LocalDateTime start,
+            LocalDateTime end
+    );
 }
