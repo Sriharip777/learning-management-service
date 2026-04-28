@@ -39,19 +39,35 @@ public class WorksheetStudentController {
 
     /*
      * =====================================
+     * 🔥 NEW: GET PRACTICE WORKSHEETS
+     * =====================================
+     */
+    @GetMapping("/practice")
+    public List<WorksheetSummaryResponse> getPracticeWorksheets(
+            @RequestParam String gradeId,
+            @RequestParam String subjectId,
+            @RequestParam(required = false) String topicId
+    ) {
+        return studentService.getPracticeWorksheets(gradeId, subjectId, topicId);
+    }
+
+    /*
+     * =====================================
      * 🔥 START WORKSHEET (NEW)
      * =====================================
      */
     @PostMapping("/{worksheetId}/start")
     public String startWorksheet(
             @PathVariable String worksheetId,
-            @RequestHeader("X-User-Id") String studentId
+            @RequestHeader("X-User-Id") String studentId,
+            @RequestParam(defaultValue = "ASSIGNED") String type
     ) {
         System.out.println("🔥 START WORKSHEET");
         System.out.println("Worksheet ID: " + worksheetId);
         System.out.println("Student ID: " + studentId);
+        System.out.println("Type: " + type);
 
-        studentService.startWorksheet(worksheetId, studentId);
+        studentService.startWorksheet(worksheetId, studentId, type);
 
         return "Worksheet started successfully";
     }

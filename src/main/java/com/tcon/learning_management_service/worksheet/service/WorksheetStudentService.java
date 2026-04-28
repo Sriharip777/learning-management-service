@@ -59,28 +59,61 @@ public class WorksheetStudentService {
      * 🔥 START WORKSHEET
      * =====================================
      */
-    public void startWorksheet(String worksheetId, String studentId) {
+    public void startWorksheet(String worksheetId, String studentId, String type) {
 
-        log.info("Starting worksheet {} for student {}", worksheetId, studentId);
+        log.info("Starting worksheet {} for student {} type {}", worksheetId, studentId, type);
 
-        boolean assigned = assignmentRepository
-                .findByStudentId(studentId)
-                .stream()
-                .anyMatch(a -> a.getWorksheetId().equals(worksheetId));
+        AttemptType attemptType = AttemptType.valueOf(type);
 
-        if (!assigned) {
-            throw new RuntimeException("Student not assigned to this worksheet");
-        }
-
+        // 🔒 Check existing active attempt
         Optional<WorksheetAttempt> existing =
-                attemptRepository.findByWorksheetIdAndStudentId(worksheetId, studentId);
+                attemptRepository.findByStudentIdAndWorksheetIdAndAttemptTypeAndStatus(
+                        studentId,
+                        worksheetId,
+                        attemptType,
+                        AttemptStatus.IN_PROGRESS
+                );
 
         if (existing.isPresent()) {
-            log.info("Worksheet already started/attempted");
-            return;
+            throw new RuntimeException("Worksheet already in progress");
         }
 
-        log.info("Worksheet start validated");
+        // ✅ ASSIGNED FLOW
+        if (attemptType == AttemptType.ASSIGNED) {
+
+            boolean assigned = assignmentRepository
+                    .findByStudentId(studentId)
+                    .stream()
+                    .anyMatch(a -> a.getWorksheetId().equals(worksheetId));
+
+            if (!assigned) {
+                throw new RuntimeException("Student not assigned to this worksheet");
+            }
+        }
+
+        // ✅ SELF PRACTICE FLOW
+        if (attemptType == AttemptType.SELF_PRACTICE) {
+
+            Worksheet worksheet = worksheetRepository.findById(worksheetId)
+                    .orElseThrow(() -> new RuntimeException("Worksheet not found"));
+
+            if (worksheet.getStatus() != WorksheetStatus.PUBLISHED) {
+                throw new RuntimeException("Worksheet is not published");
+            }
+        }
+
+        // ✅ CREATE ATTEMPT
+        WorksheetAttempt attempt = WorksheetAttempt.builder()
+                .worksheetId(worksheetId)
+                .studentId(studentId)
+                .attemptType(attemptType)
+                .status(AttemptStatus.IN_PROGRESS)
+                .startedAt(LocalDateTime.now())
+                .build();
+
+        attemptRepository.save(attempt);
+
+        log.info("Worksheet attempt started successfully");
     }
 
     /*
@@ -145,8 +178,9 @@ public class WorksheetStudentService {
      */
     public WorksheetResultResponse submitWorksheet(SubmitWorksheetRequest request, String studentId) {
 
-        log.info("Submitting worksheet: {}", request);
+        log.info("Submitting worksheet {} for student {}", request.getWorksheetId(), studentId);
 
+        // ✅ 1. BASIC VALIDATION
         if (request.getWorksheetId() == null) {
             throw new RuntimeException("WorksheetId required");
         }
@@ -155,20 +189,21 @@ public class WorksheetStudentService {
             throw new RuntimeException("Answers cannot be empty");
         }
 
-        Optional<WorksheetAttempt> existing =
-                attemptRepository.findByWorksheetIdAndStudentId(
+        // ✅ 2. FETCH ACTIVE ATTEMPT (MANDATORY)
+        WorksheetAttempt attempt = attemptRepository
+                .findByStudentIdAndWorksheetIdAndStatus(
+                        studentId,
                         request.getWorksheetId(),
-                        studentId
-                );
+                        AttemptStatus.IN_PROGRESS
+                )
+                .orElseThrow(() -> new RuntimeException("No active attempt found. Please start worksheet first."));
 
-        if (existing.isPresent()) {
-            throw new RuntimeException("Worksheet already attempted");
-        }
-
+        // ✅ 3. FETCH LATEST VERSION
         WorksheetVersion version = worksheetVersionRepository
                 .findTopByWorksheetIdOrderByVersionNumberDesc(request.getWorksheetId())
                 .orElseThrow(() -> new RuntimeException("Worksheet version not found"));
 
+        // ✅ 4. LOAD QUESTIONS
         List<Question> questions = new ArrayList<>();
 
         for (var wq : version.getQuestions()) {
@@ -182,11 +217,17 @@ public class WorksheetStudentService {
             questions.add(q);
         }
 
+        if (questions.isEmpty()) {
+            throw new RuntimeException("No questions found");
+        }
+
+        // ✅ 5. CREATE QUESTION MAP
         Map<String, Question> questionMap = new HashMap<>();
         for (Question q : questions) {
             questionMap.put(q.getId(), q);
         }
 
+        // ✅ 6. EVALUATE
         int correct = 0;
         int wrong = 0;
 
@@ -197,7 +238,7 @@ public class WorksheetStudentService {
             Question q = questionMap.get(entry.getKey());
 
             if (q == null) {
-                throw new RuntimeException("Invalid questionId");
+                throw new RuntimeException("Invalid questionId: " + entry.getKey());
             }
 
             String correctAnswer = q.getOptions().get(q.getCorrectAnswerIndex());
@@ -222,31 +263,34 @@ public class WorksheetStudentService {
             );
         }
 
+        // ✅ 7. CALCULATE SCORE
         int total = questions.size();
-        double percentage = (double) correct / total * 100;
+        double percentage = total == 0 ? 0 : ((double) correct / total) * 100;
 
-        WorksheetAttempt attempt = new WorksheetAttempt();
-        attempt.setWorksheetId(request.getWorksheetId());
-        attempt.setStudentId(studentId);
+        // ✅ 8. UPDATE EXISTING ATTEMPT (IMPORTANT)
         attempt.setTotalQuestions(total);
         attempt.setCorrectAnswers(correct);
         attempt.setScore(percentage);
         attempt.setSubmittedAt(LocalDateTime.now());
         attempt.setAnswers(request.getAnswers());
+        attempt.setStatus(AttemptStatus.SUBMITTED);
 
         attemptRepository.save(attempt);
 
-        // 🔥 Mark assignment completed
-        assignmentRepository
-                .findByStudentId(request.getStudentId())
-                .stream()
-                .filter(a -> a.getWorksheetId().equals(request.getWorksheetId()))
-                .findFirst()
-                .ifPresent(a -> {
-                    a.setCompleted(true);
-                    assignmentRepository.save(a);
-                });
+        // ✅ 9. MARK ASSIGNMENT COMPLETED (ONLY IF ASSIGNED)
+        if (attempt.getAttemptType() == AttemptType.ASSIGNED) {
+            assignmentRepository
+                    .findByStudentId(studentId)
+                    .stream()
+                    .filter(a -> a.getWorksheetId().equals(request.getWorksheetId()))
+                    .findFirst()
+                    .ifPresent(a -> {
+                        a.setCompleted(true);
+                        assignmentRepository.save(a);
+                    });
+        }
 
+        // ✅ 10. RETURN RESPONSE
         return WorksheetResultResponse.builder()
                 .totalQuestions(total)
                 .correctAnswers(correct)
@@ -254,6 +298,20 @@ public class WorksheetStudentService {
                 .scorePercentage(percentage)
                 .results(results)
                 .build();
+    }
+
+    public List<WorksheetSummaryResponse> getPracticeWorksheets(
+            String gradeId,
+            String subjectId,
+            String topicId
+    ) {
+        return worksheetRepository.findAll().stream()
+                .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
+                .filter(w -> w.getGradeId().equals(gradeId))
+                .filter(w -> w.getSubjectId().equals(subjectId))
+                .filter(w -> topicId == null || w.getTopicId().equals(topicId))
+                .map(worksheetMapper::toSummary)
+                .toList();
     }
 
     /*
