@@ -192,8 +192,8 @@ public class BookingService {
                     .title(hasText(request.getSubject()) ? request.getSubject() : "One-on-One Class")
                     .description("Direct booking with " + request.getStudentName())
                     .status(ClassStatus.SCHEDULED)
-                    .scheduledStartTime(startUtc)
-                    .scheduledEndTime(endUtc)
+                    .scheduledStartTime(request.getSessionStartTime()) // ✅ FIX
+                    .scheduledEndTime(request.getSessionEndTime())     // ✅ FIX
                     .durationMinutes(duration)
                     .maxParticipants(1)
                     .participants(new ArrayList<>())
@@ -220,8 +220,8 @@ public class BookingService {
                     .parentId(request.getParentId())
                     .subject(request.getSubject())
                     .durationMinutes(duration)
-                    .sessionStartTime(startUtc)
-                    .sessionEndTime(endUtc)
+                    .sessionStartTime(request.getSessionStartTime()) // ✅ FIX
+                    .sessionEndTime(request.getSessionEndTime())     // ✅ FIX
                     .status(BookingStatus.PENDING)
                     .amount(isFreeDemo ? BigDecimal.ZERO : defaultAmount(request.getAmount()))
                     .currency(defaultCurrency(request.getCurrency()))
