@@ -3,6 +3,7 @@ package com.tcon.learning_management_service.booking.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.tcon.learning_management_service.booking.entity.BookingStatus;
 import com.tcon.learning_management_service.booking.entity.CancellationPolicy;
+import com.tcon.learning_management_service.client.dto.VideoSessionCreateResponse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -30,6 +31,8 @@ public class BookingDto {
     private String subject;
     private Integer durationMinutes;
     private BookingStatus status;
+
+    private VideoSessionCreateResponse videoSession;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime sessionStartTime;

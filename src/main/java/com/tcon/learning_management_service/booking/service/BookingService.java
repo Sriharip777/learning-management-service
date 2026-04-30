@@ -100,7 +100,6 @@ public class BookingService {
             }
 
             boolean isFreeDemo = tryConsumeFreeDemo(studentId, request.getSessionId());
-
             LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
             Booking booking = Booking.builder()
@@ -175,11 +174,7 @@ public class BookingService {
                     endUtc
             );
 
-            int duration = resolveDurationMinutes(
-                    startUtc,
-                    endUtc
-            );
-
+            int duration = resolveDurationMinutes(startUtc, endUtc);
             log.info("📏 Calculated duration: {} minutes", duration);
 
             ClassSession session = ClassSession.builder()
@@ -192,8 +187,8 @@ public class BookingService {
                     .title(hasText(request.getSubject()) ? request.getSubject() : "One-on-One Class")
                     .description("Direct booking with " + request.getStudentName())
                     .status(ClassStatus.SCHEDULED)
-                    .scheduledStartTime(request.getSessionStartTime()) // ✅ FIX
-                    .scheduledEndTime(request.getSessionEndTime())     // ✅ FIX
+                    .scheduledStartTime(request.getSessionStartTime())
+                    .scheduledEndTime(request.getSessionEndTime())
                     .durationMinutes(duration)
                     .maxParticipants(1)
                     .participants(new ArrayList<>())
@@ -220,8 +215,8 @@ public class BookingService {
                     .parentId(request.getParentId())
                     .subject(request.getSubject())
                     .durationMinutes(duration)
-                    .sessionStartTime(request.getSessionStartTime()) // ✅ FIX
-                    .sessionEndTime(request.getSessionEndTime())     // ✅ FIX
+                    .sessionStartTime(request.getSessionStartTime())
+                    .sessionEndTime(request.getSessionEndTime())
                     .status(BookingStatus.PENDING)
                     .amount(isFreeDemo ? BigDecimal.ZERO : defaultAmount(request.getAmount()))
                     .currency(defaultCurrency(request.getCurrency()))
@@ -449,7 +444,7 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
-        return toDto(booking);
+        return toDtoWithVideoSession(booking);
     }
 
     public List<BookingDto> getStudentBookings(String studentId) {
@@ -458,7 +453,9 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findByStudentId(studentId);
         log.info("✅ Found {} bookings for student", bookings.size());
 
-        return bookings.stream().map(this::toDto).collect(Collectors.toList());
+        return bookings.stream()
+                .map(this::toDtoWithVideoSession)
+                .collect(Collectors.toList());
     }
 
     public List<BookingDto> getTeacherBookings(String teacherId) {
@@ -470,7 +467,8 @@ public class BookingService {
         String timezoneId = getTeacherTimezone(teacherId);
 
         return bookings.stream()
-                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId))
+                .map(this::toDtoWithVideoSession)
+                .map(dto -> applyDisplayTimezone(dto, timezoneId))
                 .collect(Collectors.toList());
     }
 
@@ -478,7 +476,7 @@ public class BookingService {
         log.info("📋 Getting bookings for session: {}", sessionId);
 
         return bookingRepository.findBySessionId(sessionId).stream()
-                .map(this::toDto)
+                .map(this::toDtoWithVideoSession)
                 .collect(Collectors.toList());
     }
 
@@ -488,8 +486,8 @@ public class BookingService {
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
         return bookingRepository.findByStudentIdAndSessionStartTimeBetween(studentId, now, now.plusMonths(1))
                 .stream()
+                .map(this::toDtoWithVideoSession)
                 .filter(b -> b.getStatus() == BookingStatus.CONFIRMED)
-                .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
@@ -499,7 +497,9 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findByParentId(parentId);
         log.info("✅ Found {} bookings for parent {}", bookings.size(), parentId);
 
-        return bookings.stream().map(this::toDto).collect(Collectors.toList());
+        return bookings.stream()
+                .map(this::toDtoWithVideoSession)
+                .collect(Collectors.toList());
     }
 
     public List<BookingDto> getTeacherPendingRequests(String teacherId) {
@@ -522,7 +522,8 @@ public class BookingService {
         String timezoneId = getTeacherTimezone(teacherId);
 
         return pending.stream()
-                .map(b -> applyDisplayTimezone(b, toDto(b), timezoneId))
+                .map(this::toDtoWithVideoSession)
+                .map(dto -> applyDisplayTimezone(dto, timezoneId))
                 .collect(Collectors.toList());
     }
 
@@ -639,6 +640,85 @@ public class BookingService {
                 .updatedAt(booking.getUpdatedAt())
                 .isFreeDemo(booking.getIsFreeDemo())
                 .build();
+    }
+
+    private BookingDto toDtoWithVideoSession(Booking booking) {
+        Booking effectiveBooking = booking;
+        BookingDto dto = toDto(effectiveBooking);
+
+        if (booking == null || !hasText(booking.getId())) {
+            return dto;
+        }
+
+        try {
+            VideoSessionCreateResponse videoSession = videoServiceClient.getSessionByBookingId(booking.getId());
+
+            if (videoSession != null) {
+                effectiveBooking = syncBookingStatusFromVideoSession(booking, videoSession.getStatus());
+                dto = toDto(effectiveBooking);
+                dto.setVideoSession(videoSession);
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Could not fetch video session for booking {}: {}", booking.getId(), e.getMessage());
+        }
+
+        return dto;
+    }
+
+    @Transactional
+    protected Booking syncBookingStatusFromVideoSession(Booking booking, String videoStatus) {
+        if (booking == null || !hasText(videoStatus)) {
+            return booking;
+        }
+
+        BookingStatus targetStatus = mapVideoStatusToBookingStatus(videoStatus);
+        if (targetStatus == null) {
+            return booking;
+        }
+
+        if (booking.getStatus() == targetStatus) {
+            return booking;
+        }
+
+        if (booking.getStatus() == BookingStatus.REJECTED || booking.getStatus() == BookingStatus.CANCELLED) {
+            return booking;
+        }
+
+        if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.NO_SHOW) {
+            return booking;
+        }
+
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+
+        booking.setStatus(targetStatus);
+        booking.setUpdatedAt(now);
+
+        if (targetStatus == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
+            booking.setCompletedAt(now);
+        }
+
+        if (targetStatus == BookingStatus.CANCELLED && booking.getCancelledAt() == null) {
+            booking.setCancelledAt(now);
+        }
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("✅ Synced booking {} status from video session: {}", saved.getId(), targetStatus);
+
+        return saved;
+    }
+
+    private BookingStatus mapVideoStatusToBookingStatus(String videoStatus) {
+        switch (videoStatus) {
+            case "COMPLETED":
+                return BookingStatus.COMPLETED;
+            case "NO_SHOW":
+            case "NOSHOW":
+                return BookingStatus.NO_SHOW;
+            case "CANCELLED":
+                return BookingStatus.CANCELLED;
+            default:
+                return null;
+        }
     }
 
     private void createVideoSessionSafe(Booking booking) {
@@ -839,22 +919,22 @@ public class BookingService {
                 .orElse(APP_ZONE.getId());
     }
 
-    private BookingDto applyDisplayTimezone(Booking booking, BookingDto dto, String timezoneId) {
+    private BookingDto applyDisplayTimezone(BookingDto dto, String timezoneId) {
         String safeTimezoneId = hasText(timezoneId) ? timezoneId : APP_ZONE.getId();
         ZoneId teacherZone = ZoneId.of(safeTimezoneId);
 
-        if (booking.getSessionStartTime() != null) {
-            ZonedDateTime z = booking.getSessionStartTime().atZone(teacherZone);
+        if (dto.getSessionStartTime() != null) {
+            ZonedDateTime z = dto.getSessionStartTime().atZone(teacherZone);
             dto.setDisplaySessionStartTime(z.format(DISPLAY_FMT));
         }
 
-        if (booking.getSessionEndTime() != null) {
-            ZonedDateTime z = booking.getSessionEndTime().atZone(teacherZone);
+        if (dto.getSessionEndTime() != null) {
+            ZonedDateTime z = dto.getSessionEndTime().atZone(teacherZone);
             dto.setDisplaySessionEndTime(z.format(DISPLAY_FMT));
         }
 
-        if (booking.getBookedAt() != null) {
-            ZonedDateTime z = booking.getBookedAt().atZone(teacherZone);
+        if (dto.getBookedAt() != null) {
+            ZonedDateTime z = dto.getBookedAt().atZone(teacherZone);
             dto.setDisplayBookedAt(z.format(DISPLAY_FMT));
         }
 
