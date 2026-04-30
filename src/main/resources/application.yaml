@@ -1,147 +1,147 @@
-server:
-  port: ${SERVER_PORT:8084}
-  servlet:
-    context-path: /
-  error:
-    include-message: always
-    include-binding-errors: always
+          server:
+            port: ${SERVER_PORT:8084}
+            servlet:
+              context-path: /
+            error:
+              include-message: always
+              include-binding-errors: always
+          
+          spring:
+            application:
+              name: learning-management-service
 
-spring:
-  application:
-    name: learning-management-service
+            # ─── Jackson: fix LocalDateTime serialization ───────────────────────────────
+            jackson:
+              serialization:
+                write-dates-as-timestamps: false
+              deserialization:
+                fail-on-unknown-properties: false
+              time-zone: UTC
 
-  # ─── Jackson: fix LocalDateTime serialization ───────────────────────────────
-  jackson:
-    serialization:
-      write-dates-as-timestamps: false
-    deserialization:
-      fail-on-unknown-properties: false
-    time-zone: UTC
+            data:
+              mongodb:
+                uri: ${MONGODB_URI:mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10}
+                database: ${MONGODB_DATABASE:learning_management}
+                auto-index-creation: true
 
-  data:
-    mongodb:
-      uri: ${MONGODB_URI:mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10}
-      database: ${MONGODB_DATABASE:learning_management}
-      auto-index-creation: true
+            kafka:
+              bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+              consumer:
+                group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
+                auto-offset-reset: earliest
+                enable-auto-commit: false
+                key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+                value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+                properties:
+                  spring.json.trusted.packages: "*"
+              producer:
+                key-serializer: org.apache.kafka.common.serialization.StringSerializer
+                value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+                acks: all
+                retries: 3
 
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP:learning-management-service}
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      acks: all
-      retries: 3
+            # ─── Spring Cloud OpenFeign ──────────────────────────────────────────────────
+            cloud:
+              openfeign:
+                client:
+                  config:
+                    default:
+                      connectTimeout: 5000
+                      readTimeout: 5000
+                      loggerLevel: FULL
+                    video-service:
+                      connectTimeout: 10000
+                      readTimeout: 10000
+                      url: ${VIDEO_SERVICE_URL:http://localhost:8083}
 
-  # ─── Spring Cloud OpenFeign ──────────────────────────────────────────────────
-  cloud:
-    openfeign:
-      client:
-        config:
-          default:
-            connectTimeout: 5000
-            readTimeout: 5000
-            loggerLevel: FULL
-          video-service:
-            connectTimeout: 10000
-            readTimeout: 10000
-            url: ${VIDEO_SERVICE_URL:http://localhost:8083}
+          # ─── Kafka Topic Names (read by @KafkaListener and BookingService) ──────────────
+          kafka:
+            topics:
+              booking-events: booking-events
+              session-events: session-events
 
-# ─── Kafka Topic Names (read by @KafkaListener and BookingService) ──────────────
-kafka:
-  topics:
-    booking-events: booking-events
-    session-events: session-events
+          # ─── Video Service URL (read by @FeignClient url="${video.service.url:...}") ────
+          video:
+            service:
+              url: ${VIDEO_SERVICE_URL:http://localhost:8083}
 
-# ─── Video Service URL (read by @FeignClient url="${video.service.url:...}") ────
-video:
-  service:
-    url: ${VIDEO_SERVICE_URL:http://localhost:8083}
+          # ─── Feign Circuit Breaker (REQUIRED for fallback = VideoServiceClientFallback) ─
+          feign:
+            circuitbreaker:
+              enabled: true
+            client:
+              config:
+                default:
+                  connectTimeout: 5000
+                  readTimeout: 5000
+                  loggerLevel: FULL
+                video-service:
+                  connectTimeout: 10000
+                  readTimeout: 10000
 
-# ─── Feign Circuit Breaker (REQUIRED for fallback = VideoServiceClientFallback) ─
-feign:
-  circuitbreaker:
-    enabled: true
-  client:
-    config:
-      default:
-        connectTimeout: 5000
-        readTimeout: 5000
-        loggerLevel: FULL
-      video-service:
-        connectTimeout: 10000
-        readTimeout: 10000
+          # ─── Resilience4j Circuit Breaker Instance ──────────────────────────────────────
+          resilience4j:
+            circuitbreaker:
+              instances:
+                video-service:
+                  registerHealthIndicator: true
+                  slidingWindowSize: 10
+                  minimumNumberOfCalls: 5
+                  permittedNumberOfCallsInHalfOpenState: 3
+                  automaticTransitionFromOpenToHalfOpenEnabled: true
+                  waitDurationInOpenState: 5s
+                  failureRateThreshold: 50
+                  eventConsumerBufferSize: 10
+            timelimiter:
+              instances:
+                video-service:
+                  timeoutDuration: 10s
 
-# ─── Resilience4j Circuit Breaker Instance ──────────────────────────────────────
-resilience4j:
-  circuitbreaker:
-    instances:
-      video-service:
-        registerHealthIndicator: true
-        slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        permittedNumberOfCallsInHalfOpenState: 3
-        automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 5s
-        failureRateThreshold: 50
-        eventConsumerBufferSize: 10
-  timelimiter:
-    instances:
-      video-service:
-        timeoutDuration: 10s
+          # ─── Eureka ─────────────────────────────────────────────────────────────────────
+          eureka:
+            client:
+              service-url:
+                defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
+              register-with-eureka: true
+              fetch-registry: true
+            instance:
+              prefer-ip-address: true
+              lease-renewal-interval-in-seconds: 30
+              lease-expiration-duration-in-seconds: 90
+              instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
 
-# ─── Eureka ─────────────────────────────────────────────────────────────────────
-eureka:
-  client:
-    service-url:
-      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka/}
-    register-with-eureka: true
-    fetch-registry: true
-  instance:
-    prefer-ip-address: true
-    lease-renewal-interval-in-seconds: 30
-    lease-expiration-duration-in-seconds: 90
-    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+          # ─── External Service URLs ───────────────────────────────────────────────────────
+          user:
+            service:
+              url: ${USER_SERVICE_URL:http://localhost:8081}
 
-# ─── External Service URLs ───────────────────────────────────────────────────────
-user:
-  service:
-    url: ${USER_SERVICE_URL:http://localhost:8081}
+          auth:
+            service:
+              url: ${AUTH_SERVICE_URL:http://localhost:8081}
 
-auth:
-  service:
-    url: ${AUTH_SERVICE_URL:http://localhost:8081}
+          # ─── Actuator ───────────────────────────────────────────────────────────────────
+          management:
+            endpoints:
+              web:
+                exposure:
+                  include: health,info,metrics,prometheus
+            endpoint:
+              health:
+                show-details: when_authorized
+            metrics:
+              export:
+                prometheus:
+                  enabled: true
 
-# ─── Actuator ───────────────────────────────────────────────────────────────────
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: when_authorized
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-
-# ─── Logging ────────────────────────────────────────────────────────────────────
-logging:
-  level:
-    root: INFO
-    org.springframework.web: INFO
-    org.springframework.data.mongodb: INFO
-    io.github.resilience4j: INFO
-    reactor.netty: WARN
-    io.netty: ERROR
-    com.tcon.learning_management_service: DEBUG
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+          # ─── Logging ────────────────────────────────────────────────────────────────────
+          logging:
+            level:
+              root: INFO
+              org.springframework.web: INFO
+              org.springframework.data.mongodb: INFO
+              io.github.resilience4j: INFO
+              reactor.netty: WARN
+              io.netty: ERROR
+              com.tcon.learning_management_service: DEBUG
+            pattern:
+              console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

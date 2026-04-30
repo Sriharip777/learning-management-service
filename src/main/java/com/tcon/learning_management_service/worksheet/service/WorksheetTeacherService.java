@@ -137,11 +137,6 @@ public class WorksheetTeacherService {
             throw new RuntimeException("Only published worksheets can be assigned");
         }
 
-        if (worksheet.getReviewStatus() == null ||
-                worksheet.getReviewStatus() != ReviewStatus.APPROVED) {
-            log.warn("Worksheet not approved: worksheetId={}, reviewStatus={}", worksheetId, worksheet.getReviewStatus());
-            throw new RuntimeException("Worksheet must be APPROVED before assignment");
-        }
 
         log.info("Worksheet validation passed: worksheetId={}", worksheetId);
     }
