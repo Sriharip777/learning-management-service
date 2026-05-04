@@ -269,11 +269,8 @@ public class CourseController {
     }
 
     @GetMapping("/{courseId}/assigned-teachers")
-    public ResponseEntity<List<AssignedTeacherDto>> getAssignedTeachersForCourse(
-            @PathVariable String courseId
-    ) {
-        List<AssignedTeacherDto> teachers = courseService.getAssignedTeachersForCourse(courseId);
-        return ResponseEntity.ok(teachers);
+    public ResponseEntity<List<AssignedTeacherDto>> getAssignedTeachersForCourse(@PathVariable String courseId) {
+        return ResponseEntity.ok(courseService.getAssignedTeachersForCourse(courseId));
     }
 
     @DeleteMapping("/{courseId}/assign-teacher/{teacherUserId}")

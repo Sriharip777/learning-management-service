@@ -693,32 +693,69 @@ public class CourseService {
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
         List<String> teacherUserIds = course.getTeacherIds();
+
         if (teacherUserIds == null || teacherUserIds.isEmpty()) {
+            log.info("No assigned teachers found for courseId {}", courseId);
             return List.of();
         }
 
         return teacherUserIds.stream()
-                .map(userId -> {
-                    UserResponseDto user = userServiceClient.getUserById(userId);
-                    TeacherResponseDto teacher = null;
-                    try {
-                        teacher = userServiceClient.getTeacherByUserId(userId);
-                    } catch (Exception ignored) {}
-
-                    AssignedTeacherDto dto = new AssignedTeacherDto();
-                    dto.setUserId(userId);
-                    dto.setFirstName(user.getFirstName());
-                    dto.setLastName(user.getLastName());
-                    dto.setAvatar(user.getProfilePicture());
-                    dto.setAverageRating(teacher != null ? teacher.getAverageRating() : null);
-                    dto.setTotalReviews(teacher != null ? teacher.getTotalReviews() : null);
-                    dto.setSubjects(teacher != null ? teacher.getSubjects() : null);
-                    dto.setLanguages(teacher != null ? teacher.getLanguages() : null);
-                    dto.setHourlyRate(teacher != null ? teacher.getHourlyRate() : null);
-                    dto.setCurrency("INR"); // or teacher.getCurrency()
-                    return dto;
-                })
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isBlank())
+                .distinct()
+                .map(this::buildAssignedTeacherSafely)
+                .filter(java.util.Objects::nonNull)
                 .toList();
+    }
+
+    private AssignedTeacherDto buildAssignedTeacherSafely(String userId) {
+        try {
+            UserResponseDto user = null;
+            TeacherResponseDto teacher = null;
+
+            try {
+                user = userServiceClient.getUserById(userId);
+            } catch (FeignException ex) {
+                log.warn("Failed to fetch user details for assigned teacher userId {}: status={}, message={}",
+                        userId, ex.status(), ex.getMessage());
+            } catch (Exception ex) {
+                log.warn("Failed to fetch user details for assigned teacher userId {}: {}",
+                        userId, ex.getMessage());
+            }
+
+            try {
+                teacher = userServiceClient.getTeacherByUserId(userId);
+            } catch (FeignException ex) {
+                log.warn("Failed to fetch teacher profile for assigned teacher userId {}: status={}, message={}",
+                        userId, ex.status(), ex.getMessage());
+            } catch (Exception ex) {
+                log.warn("Failed to fetch teacher profile for assigned teacher userId {}: {}",
+                        userId, ex.getMessage());
+            }
+
+            if (user == null && teacher == null) {
+                log.warn("Skipping assigned teacher userId {} because both user and teacher profile are unavailable", userId);
+                return null;
+            }
+
+            AssignedTeacherDto dto = new AssignedTeacherDto();
+            dto.setUserId(userId);
+            dto.setFirstName(user != null ? user.getFirstName() : null);
+            dto.setLastName(user != null ? user.getLastName() : null);
+            dto.setAvatar(user != null ? user.getProfilePicture() : null);
+            dto.setAverageRating(teacher != null ? teacher.getAverageRating() : null);
+            dto.setTotalReviews(teacher != null ? teacher.getTotalReviews() : null);
+            dto.setSubjects(teacher != null && teacher.getSubjects() != null ? teacher.getSubjects() : List.of());
+            dto.setLanguages(teacher != null && teacher.getLanguages() != null ? teacher.getLanguages() : List.of());
+            dto.setHourlyRate(teacher != null ? teacher.getHourlyRate() : null);
+            dto.setCurrency("INR");
+
+            return dto;
+        } catch (Exception ex) {
+            log.error("Unexpected error while building assigned teacher for userId {}: {}", userId, ex.getMessage(), ex);
+            return null;
+        }
     }
 
     private String buildDisplayName(UserResponseDto user) {
