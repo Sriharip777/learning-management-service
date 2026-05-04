@@ -1,11 +1,10 @@
 package com.tcon.learning_management_service.booking.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,6 +30,7 @@ public class BatchBookingRequest {
     @Email(message = "Invalid email format")
     private String studentEmail;
 
+    @jakarta.validation.Valid
     @NotEmpty(message = "At least one session is required")
     private List<SessionSlot> sessions;
 
@@ -40,10 +40,9 @@ public class BatchBookingRequest {
     @Builder.Default
     private String currency = "INR";
 
-    @Positive(message = "Total amount must be positive")
+    @PositiveOrZero(message = "Total amount must be zero or positive")
     private BigDecimal totalAmount;
 
-    // ✅ Nested class for individual session slots
     @Data
     @Builder
     @NoArgsConstructor
@@ -55,7 +54,7 @@ public class BatchBookingRequest {
         @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
         private LocalDateTime sessionEndTime;
 
-        @Positive(message = "Amount must be positive")
+        @PositiveOrZero(message = "Amount must be zero or positive")
         private BigDecimal amount;
     }
 }

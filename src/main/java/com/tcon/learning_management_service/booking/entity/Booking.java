@@ -30,6 +30,8 @@ public class Booking {
     private String sessionId;
 
     private Boolean isFreeDemo;
+    private Integer freeSlotsApplied;
+    private Integer paidSlotsApplied;
 
     @Indexed
     private String courseId;

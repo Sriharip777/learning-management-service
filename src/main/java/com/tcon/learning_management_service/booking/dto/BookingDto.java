@@ -27,6 +27,8 @@ public class BookingDto {
     private String teacherId;
     private String teacherName;
     private Boolean isFreeDemo;
+    private Integer freeSlotsApplied;
+    private Integer paidSlotsApplied;
     private String parentId;
     private String subject;
     private Integer durationMinutes;

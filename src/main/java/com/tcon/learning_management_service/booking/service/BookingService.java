@@ -70,6 +70,18 @@ public class BookingService {
         }
     }
 
+    private int getFreeSlotsToApply(String studentId, int requestedSlots) {
+        int remaining = demoLimitService.getRemainingFreeDemos(studentId);
+        return Math.min(remaining, requestedSlots);
+    }
+
+    private BigDecimal resolvePaidSlotAmount(BigDecimal requestedAmount) {
+        if (requestedAmount == null || requestedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Paid slot amount must be greater than 0");
+        }
+        return requestedAmount;
+    }
+
     private BookingDto createBookingForExistingSession(String studentId, BookingRequest request) {
         log.info("📋 Creating booking for existing session: {}", request.getSessionId());
 
@@ -99,7 +111,13 @@ public class BookingService {
                 throw new IllegalArgumentException("Session is full");
             }
 
-            boolean isFreeDemo = tryConsumeFreeDemo(studentId, request.getSessionId());
+            int freeSlotsApplied = getFreeSlotsToApply(studentId, 1);
+            boolean isFreeDemo = freeSlotsApplied == 1;
+
+            BigDecimal finalAmount = isFreeDemo
+                    ? BigDecimal.ZERO
+                    : resolvePaidSlotAmount(defaultAmount(request.getAmount()));
+
             LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
             Booking booking = Booking.builder()
@@ -116,7 +134,7 @@ public class BookingService {
                     .status(BookingStatus.PENDING)
                     .sessionStartTime(session.getScheduledStartTime())
                     .sessionEndTime(session.getScheduledEndTime())
-                    .amount(isFreeDemo ? BigDecimal.ZERO : defaultAmount(request.getAmount()))
+                    .amount(finalAmount)
                     .currency(defaultCurrency(request.getCurrency()))
                     .bookedAt(now)
                     .cancellationPolicy(getDefaultCancellationPolicy())
@@ -125,11 +143,19 @@ public class BookingService {
                     .createdAt(now)
                     .updatedAt(now)
                     .isFreeDemo(isFreeDemo)
+                    .freeSlotsApplied(freeSlotsApplied)
+                    .paidSlotsApplied(isFreeDemo ? 0 : 1)
                     .build();
 
             Booking saved = bookingRepository.save(booking);
-            log.info("✅ Booking created: ID={}, Student={}, Session={}, isFreeDemo={}",
-                    saved.getId(), saved.getStudentName(), saved.getSessionId(), saved.getIsFreeDemo());
+
+            if (freeSlotsApplied > 0) {
+                demoLimitService.consumeFreeDemos(studentId, freeSlotsApplied);
+            }
+
+            log.info("✅ Booking created: ID={}, Student={}, Session={}, isFreeDemo={}, freeSlotsApplied={}, paidSlotsApplied={}, amount={}",
+                    saved.getId(), saved.getStudentName(), saved.getSessionId(), saved.getIsFreeDemo(),
+                    saved.getFreeSlotsApplied(), saved.getPaidSlotsApplied(), saved.getAmount());
 
             eventPublisher.publishBookingCreated(saved);
             return toDto(saved);
@@ -201,7 +227,13 @@ public class BookingService {
             ClassSession savedSession = sessionRepository.save(session);
             log.info("✅ ClassSession created: {} (Type: ONE_ON_ONE)", savedSession.getId());
 
-            boolean isFreeDemo = tryConsumeFreeDemo(studentId, savedSession.getId());
+            int freeSlotsApplied = getFreeSlotsToApply(studentId, 1);
+            boolean isFreeDemo = freeSlotsApplied == 1;
+
+            BigDecimal finalAmount = isFreeDemo
+                    ? BigDecimal.ZERO
+                    : resolvePaidSlotAmount(defaultAmount(request.getAmount()));
+
             LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
             Booking booking = Booking.builder()
@@ -218,7 +250,7 @@ public class BookingService {
                     .sessionStartTime(request.getSessionStartTime())
                     .sessionEndTime(request.getSessionEndTime())
                     .status(BookingStatus.PENDING)
-                    .amount(isFreeDemo ? BigDecimal.ZERO : defaultAmount(request.getAmount()))
+                    .amount(finalAmount)
                     .currency(defaultCurrency(request.getCurrency()))
                     .bookedAt(now)
                     .cancellationPolicy(getDefaultCancellationPolicy())
@@ -227,9 +259,15 @@ public class BookingService {
                     .createdAt(now)
                     .updatedAt(now)
                     .isFreeDemo(isFreeDemo)
+                    .freeSlotsApplied(freeSlotsApplied)
+                    .paidSlotsApplied(isFreeDemo ? 0 : 1)
                     .build();
 
             Booking saved = bookingRepository.save(booking);
+
+            if (freeSlotsApplied > 0) {
+                demoLimitService.consumeFreeDemos(studentId, freeSlotsApplied);
+            }
 
             savedSession.setBookingId(saved.getId());
             sessionRepository.save(savedSession);
@@ -243,6 +281,9 @@ public class BookingService {
             log.info("   ⏱️ Duration: {} minutes", saved.getDurationMinutes());
             log.info("   📅 Time: {} to {}", saved.getSessionStartTime(), saved.getSessionEndTime());
             log.info("   🎁 isFreeDemo: {}", saved.getIsFreeDemo());
+            log.info("   🆓 freeSlotsApplied: {}", saved.getFreeSlotsApplied());
+            log.info("   💰 paidSlotsApplied: {}", saved.getPaidSlotsApplied());
+            log.info("   💵 amount: {}", saved.getAmount());
 
             eventPublisher.publishBookingCreated(saved);
             return toDto(saved);
@@ -258,7 +299,7 @@ public class BookingService {
         log.info("  - Student: {} ({})", request.getStudentName(), request.getStudentEmail());
         log.info("  - Teacher: {}", request.getTeacherId());
         log.info("  - Sessions: {}", request.getSessions().size());
-        log.info("  - Total amount: {} {}", request.getCurrency(), request.getTotalAmount());
+        log.info("  - Requested total amount: {} {}", request.getCurrency(), request.getTotalAmount());
 
         if (!hasText(request.getStudentName())) {
             throw new IllegalArgumentException("Student name is required");
@@ -270,15 +311,36 @@ public class BookingService {
             throw new IllegalArgumentException("At least one session is required");
         }
 
+        List<BatchBookingRequest.SessionSlot> sortedSlots = request.getSessions().stream()
+                .sorted((a, b) -> a.getSessionStartTime().compareTo(b.getSessionStartTime()))
+                .toList();
+
+        int requestedSlots = sortedSlots.size();
+        int freeSlotsApplied = getFreeSlotsToApply(studentId, requestedSlots);
+        int paidSlotsApplied = requestedSlots - freeSlotsApplied;
+
         List<Booking.SessionTime> sessionTimes = new ArrayList<>();
-        for (BatchBookingRequest.SessionSlot slot : request.getSessions()) {
+        BigDecimal recalculatedTotal = BigDecimal.ZERO;
+
+        for (int i = 0; i < sortedSlots.size(); i++) {
+            BatchBookingRequest.SessionSlot slot = sortedSlots.get(i);
+
             validateSessionRange(slot.getSessionStartTime(), slot.getSessionEndTime());
             validateBookingTime(slot.getSessionStartTime());
+
+            BigDecimal finalSlotAmount;
+            if (i < freeSlotsApplied) {
+                finalSlotAmount = BigDecimal.ZERO;
+            } else {
+                finalSlotAmount = resolvePaidSlotAmount(slot.getAmount());
+            }
+
+            recalculatedTotal = recalculatedTotal.add(finalSlotAmount);
 
             sessionTimes.add(Booking.SessionTime.builder()
                     .startTime(slot.getSessionStartTime())
                     .endTime(slot.getSessionEndTime())
-                    .amount(slot.getAmount())
+                    .amount(finalSlotAmount)
                     .build());
         }
 
@@ -291,7 +353,7 @@ public class BookingService {
                 .teacherId(request.getTeacherId())
                 .courseId(request.getCourseId())
                 .sessions(sessionTimes)
-                .amount(request.getTotalAmount())
+                .amount(recalculatedTotal)
                 .currency(defaultCurrency(request.getCurrency()))
                 .status(BookingStatus.PENDING)
                 .bookedAt(now)
@@ -300,12 +362,20 @@ public class BookingService {
                 .notes(request.getNotes())
                 .createdAt(now)
                 .updatedAt(now)
-                .isFreeDemo(false)
+                .isFreeDemo(paidSlotsApplied == 0)
+                .freeSlotsApplied(freeSlotsApplied)
+                .paidSlotsApplied(paidSlotsApplied)
                 .build();
 
         Booking savedBooking = bookingRepository.save(booking);
-        log.info("✅ Multi-session booking created: ID={}, Sessions={}, Total={}{}",
-                savedBooking.getId(), sessionTimes.size(), request.getCurrency(), request.getTotalAmount());
+
+        if (freeSlotsApplied > 0) {
+            demoLimitService.consumeFreeDemos(studentId, freeSlotsApplied);
+        }
+
+        log.info("✅ Multi-session booking created: ID={}, Sessions={}, freeSlotsApplied={}, paidSlotsApplied={}, Total={} {}",
+                savedBooking.getId(), sessionTimes.size(), freeSlotsApplied, paidSlotsApplied,
+                savedBooking.getCurrency(), recalculatedTotal);
 
         eventPublisher.publishBookingCreated(savedBooking);
         return toDto(savedBooking);
@@ -318,8 +388,8 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
-        if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
-            throw new IllegalArgumentException("Free demo booking is already confirmed; no payment required");
+        if (booking.getAmount() == null || booking.getAmount().compareTo(BigDecimal.ZERO) == 0) {
+            throw new IllegalArgumentException("This booking does not require payment");
         }
 
         if (booking.getStatus() != BookingStatus.PENDING &&
@@ -365,18 +435,22 @@ public class BookingService {
         }
 
         if (!hasText(booking.getSessionId())) {
-            log.error("❌ Cannot approve booking without sessionId. bookingId={}", bookingId);
-            throw new IllegalStateException("Cannot approve booking without linked session");
+            if (booking.getSessions() == null || booking.getSessions().isEmpty()) {
+                log.error("❌ Cannot approve booking without sessionId or sessions. bookingId={}", bookingId);
+                throw new IllegalStateException("Cannot approve booking without linked session or sessions");
+            }
+            log.warn("⚠️ Approving booking without single sessionId (multi-session booking). bookingId={}, sessions={}",
+                    bookingId, booking.getSessions().size());
         }
 
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
         boolean confirmedImmediately = false;
 
-        if (Boolean.TRUE.equals(booking.getIsFreeDemo())) {
+        if (booking.getAmount() != null && booking.getAmount().compareTo(BigDecimal.ZERO) == 0) {
             booking.setStatus(BookingStatus.CONFIRMED);
             booking.setConfirmedAt(now);
             confirmedImmediately = true;
-            log.info("✅ Free demo booking auto-confirmed after teacher approval: {}", bookingId);
+            log.info("✅ Fully free booking auto-confirmed after teacher approval: {}", bookingId);
         } else {
             booking.setStatus(BookingStatus.PENDING_PAYMENT);
             log.info("✅ Booking moved to PENDING_PAYMENT after teacher approval: {}", bookingId);
@@ -393,7 +467,7 @@ public class BookingService {
         Booking updated = bookingRepository.save(booking);
         log.info("✅ Booking approved: {} - Student: {}", bookingId, booking.getStudentName());
 
-        if (confirmedImmediately) {
+        if (confirmedImmediately && hasText(updated.getSessionId())) {
             createVideoSessionSafe(updated);
         }
 
@@ -639,6 +713,8 @@ public class BookingService {
                 .createdAt(booking.getCreatedAt())
                 .updatedAt(booking.getUpdatedAt())
                 .isFreeDemo(booking.getIsFreeDemo())
+                .freeSlotsApplied(booking.getFreeSlotsApplied())
+                .paidSlotsApplied(booking.getPaidSlotsApplied())
                 .build();
     }
 
@@ -879,17 +955,6 @@ public class BookingService {
 
     private String defaultCurrency(String currency) {
         return hasText(currency) ? currency : "INR";
-    }
-
-    private boolean tryConsumeFreeDemo(String studentId, String referenceId) {
-        try {
-            demoLimitService.consumeFreeDemo(studentId);
-            log.info("Using free demo for student {} on reference {}", studentId, referenceId);
-            return true;
-        } catch (Exception ex) {
-            log.info("No free demo available for student {}: {}", studentId, ex.getMessage());
-            return false;
-        }
     }
 
     private void ensureNoTeacherOverlap(String teacherId,

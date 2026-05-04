@@ -20,14 +20,15 @@ public class DemoLimitService {
 
     public boolean canBookDemo(String studentId) {
         DemoClassLimit limit = getOrCreateLimit(studentId);
-        return limit.getDemosUsed() < limit.getTotalDemosAllowed() && limit.getIsLimitActive();
+        return limit.getDemosUsed() < limit.getTotalDemosAllowed()
+                && Boolean.TRUE.equals(limit.getIsLimitActive());
     }
 
     public DemoLimitDto getDemoLimit(String studentId) {
         DemoClassLimit limit = getOrCreateLimit(studentId);
 
         int remaining = Math.max(0, limit.getTotalDemosAllowed() - limit.getDemosUsed());
-        boolean canBook = remaining > 0 && limit.getIsLimitActive();
+        boolean canBook = remaining > 0 && Boolean.TRUE.equals(limit.getIsLimitActive());
 
         String message;
         if (!canBook) {
@@ -48,19 +49,7 @@ public class DemoLimitService {
 
     @Transactional
     public void incrementDemoUsage(String studentId) {
-        DemoClassLimit limit = getOrCreateLimit(studentId);
-
-        limit.setDemosUsed(limit.getDemosUsed() + 1);
-
-        if (limit.getFirstDemoAt() == null) {
-            limit.setFirstDemoAt(LocalDateTime.now());
-        }
-
-        limit.setLastDemoAt(LocalDateTime.now());
-
-        limitRepository.save(limit);
-        log.info("Demo usage incremented for student: {}. Total used: {}",
-                studentId, limit.getDemosUsed());
+        consumeFreeDemos(studentId, 1);
     }
 
     @Transactional
@@ -110,8 +99,6 @@ public class DemoLimitService {
         return getDemoLimit(studentId);
     }
 
-    // DemoLimitService.java
-
     public boolean hasFreeDemo(String studentId) {
         DemoClassLimit limit = getOrCreateLimit(studentId);
         return Boolean.TRUE.equals(limit.getIsLimitActive())
@@ -120,23 +107,51 @@ public class DemoLimitService {
 
     @Transactional
     public DemoLimitDto consumeFreeDemo(String studentId) {
+        return consumeFreeDemos(studentId, 1);
+    }
+
+    public int getRemainingFreeDemos(String studentId) {
         DemoClassLimit limit = getOrCreateLimit(studentId);
 
-        if (!hasFreeDemo(studentId)) {
-            throw new IllegalArgumentException("No free demo sessions remaining");
+        if (!Boolean.TRUE.equals(limit.getIsLimitActive())) {
+            return 0;
         }
 
-        limit.setDemosUsed(limit.getDemosUsed() + 1);
+        return Math.max(0, limit.getTotalDemosAllowed() - limit.getDemosUsed());
+    }
+
+    @Transactional
+    public DemoLimitDto consumeFreeDemos(String studentId, int count) {
+        if (count <= 0) {
+            return getDemoLimit(studentId);
+        }
+
+        DemoClassLimit limit = getOrCreateLimit(studentId);
+
+        if (!Boolean.TRUE.equals(limit.getIsLimitActive())) {
+            throw new IllegalArgumentException("Demo limit is not active");
+        }
+
+        int remaining = Math.max(0, limit.getTotalDemosAllowed() - limit.getDemosUsed());
+
+        if (count > remaining) {
+            throw new IllegalArgumentException("Not enough free demo sessions remaining");
+        }
+
+        limit.setDemosUsed(limit.getDemosUsed() + count);
 
         if (limit.getFirstDemoAt() == null) {
             limit.setFirstDemoAt(LocalDateTime.now());
         }
+
         limit.setLastDemoAt(LocalDateTime.now());
 
         limitRepository.save(limit);
-        log.info("Free demo consumed for student: {}. Used: {}", studentId, limit.getDemosUsed());
+        log.info("Consumed {} free demo session(s) for student: {}. Used: {}",
+                count, studentId, limit.getDemosUsed());
 
         return getDemoLimit(studentId);
     }
+
 
 }
