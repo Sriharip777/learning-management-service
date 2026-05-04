@@ -39,6 +39,12 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
     List<Booking> findByTeacherIdAndSessionStartTimeBetween(
             String teacherId, LocalDateTime start, LocalDateTime end);
 
+    List<Booking> findByTeacherIdAndSessionStartTimeLessThanAndSessionEndTimeGreaterThan(
+            String teacherId,
+            LocalDateTime slotEnd,
+            LocalDateTime slotStart
+    );
+
     Long countBySessionIdAndStatus(String sessionId, BookingStatus status);
 
     Long countByStudentIdAndStatus(String studentId, BookingStatus status);

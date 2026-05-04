@@ -133,21 +133,49 @@ public class AvailabilityService {
      * Check if a given slot window is already booked or has a scheduled class.
      */
     private boolean isSlotBooked(String teacherId, LocalDateTime slotStart, LocalDateTime slotEnd) {
-        var bookings = bookingRepository.findByTeacherIdAndSessionStartTimeBetween(
-                teacherId, slotStart.minusMinutes(1), slotEnd.plusMinutes(1));
+        var bookings = bookingRepository
+                .findByTeacherIdAndSessionStartTimeLessThanAndSessionEndTimeGreaterThan(
+                        teacherId,
+                        slotEnd,
+                        slotStart
+                );
 
-        boolean hasBooking = bookings.stream()
-                .anyMatch(b -> b.getStatus() == BookingStatus.CONFIRMED ||
-                        b.getStatus() == BookingStatus.PENDING);
+        boolean hasBlockingBooking = bookings.stream()
+                .filter(b ->
+                        b.getStatus() == BookingStatus.CONFIRMED ||
+                                b.getStatus() == BookingStatus.PENDING ||
+                                b.getStatus() == BookingStatus.PENDING_PAYMENT
+                )
+                .anyMatch(b ->
+                        (b.getSessionStartTime() != null &&
+                                b.getSessionEndTime() != null &&
+                                b.getSessionStartTime().isBefore(slotEnd) &&
+                                b.getSessionEndTime().isAfter(slotStart))
+                                ||
+                                (b.getSessions() != null && b.getSessions().stream().anyMatch(session ->
+                                        session.getStartTime() != null &&
+                                                session.getEndTime() != null &&
+                                                session.getStartTime().isBefore(slotEnd) &&
+                                                session.getEndTime().isAfter(slotStart)
+                                ))
+                );
 
-        if (hasBooking) {
+        if (hasBlockingBooking) {
             return true;
         }
 
         var sessions = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
-                teacherId, slotStart.minusMinutes(1), slotEnd.plusMinutes(1));
+                teacherId,
+                slotStart.toLocalDate().atStartOfDay(),
+                slotEnd.toLocalDate().atTime(LocalTime.MAX)
+        );
 
-        return !sessions.isEmpty();
+        return sessions.stream().anyMatch(session ->
+                session.getScheduledStartTime() != null &&
+                        session.getScheduledEndTime() != null &&
+                        session.getScheduledStartTime().isBefore(slotEnd) &&
+                        session.getScheduledEndTime().isAfter(slotStart)
+        );
     }
 
     /**

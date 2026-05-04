@@ -27,10 +27,10 @@ public class TimezoneValidationService {
     }
 
     public List<String> getAllAvailableTimezones() {
-        return ZoneId.getAvailableZoneIds()
+        return ZoneId.getAvailableZoneIds()    // official list of valid zone ids [web:74][web:31]
                 .stream()
                 .sorted()
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public String getCurrentOffset(String timezoneId) {

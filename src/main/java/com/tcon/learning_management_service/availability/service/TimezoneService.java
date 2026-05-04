@@ -36,10 +36,17 @@ public class TimezoneService {
     private final TimezoneValidationService timezoneValidationService;
 
     public List<TimezoneResponseDto> getAllTimezones() {
-        return timezoneValidationService.getAllAvailableTimezones()
-                .stream()
-                .map(this::buildTimezoneResponse)
-                .collect(Collectors.toList());
+        try {
+            log.info("TimezoneService#getAllTimezones called");
+
+            return timezoneValidationService.getAllAvailableTimezones()
+                    .stream()
+                    .map(this::buildTimezoneResponse)
+                    .toList();
+        } catch (Exception e) {
+            log.error("Failed to build timezone list", e);
+            return List.of(); // temporary, so frontend does not crash while you debug
+        }
     }
 
     public TimezoneResponseDto getTimezoneDetails(String timezoneId) {
@@ -122,16 +129,28 @@ public class TimezoneService {
     }
 
     private TimezoneResponseDto buildTimezoneResponse(String timezoneId) {
-        ZoneId zoneId = ZoneId.of(timezoneId);
-        ZonedDateTime now = ZonedDateTime.now(zoneId);
+        try {
+            ZoneId zoneId = ZoneId.of(timezoneId); // throws if invalid [web:49]
+            ZonedDateTime now = ZonedDateTime.now(zoneId);
 
-        return TimezoneResponseDto.builder()
-                .timezoneId(timezoneId)
-                .displayName(timezoneId)
-                .currentTime(now.format(DISPLAY_TIME_WITH_ZONE_FORMATTER))
-                .currentOffset(now.format(OFFSET_FORMATTER))
-                .timezoneAbbreviation(now.format(TIMEZONE_ABBR_FORMATTER))
-                .build();
+            return TimezoneResponseDto.builder()
+                    .timezoneId(timezoneId)
+                    .displayName(timezoneId)
+                    .currentTime(now.format(DISPLAY_TIME_WITH_ZONE_FORMATTER))
+                    .currentOffset(now.format(OFFSET_FORMATTER))
+                    .timezoneAbbreviation(now.format(TIMEZONE_ABBR_FORMATTER))
+                    .build();
+        } catch (Exception e) {
+            log.error("Skipping invalid timezone id: {}", timezoneId, e);
+            // Fallback: show minimal info so list still works
+            return TimezoneResponseDto.builder()
+                    .timezoneId(timezoneId)
+                    .displayName(timezoneId)
+                    .currentTime("")
+                    .currentOffset("")
+                    .timezoneAbbreviation("")
+                    .build();
+        }
     }
 
     private TimeSlotDisplayDto convertSingleSlot(

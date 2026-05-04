@@ -10,6 +10,9 @@ import com.tcon.learning_management_service.availability.entity.TeacherAvailabil
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
 import com.tcon.learning_management_service.availability.repository.DateSpecificAvailabilityRepository;
 import com.tcon.learning_management_service.availability.repository.TeacherAvailabilityRepository;
+import com.tcon.learning_management_service.booking.entity.Booking;
+import com.tcon.learning_management_service.booking.entity.BookingStatus;
+import com.tcon.learning_management_service.booking.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -41,6 +45,7 @@ public class AvailabilityManagementService {
     private final TeacherAvailabilityRepository availabilityRepository;
     private final DateSpecificAvailabilityRepository dateSpecificRepository;
     private final TimezoneValidationService timezoneValidationService;
+    private final BookingRepository bookingRepository;
 
     @Transactional
     public TeacherAvailabilityDto setTeacherAvailability(
@@ -269,11 +274,22 @@ public class AvailabilityManagementService {
     public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId, SessionMode mode) {
         validateTeacherId(teacherId);
 
-        LocalDate today = LocalDate.now();
+        TeacherAvailability teacherAvailability = availabilityRepository.findByTeacherId(teacherId)
+                .orElse(null);
+
+        String teacherTimezone = teacherAvailability != null && teacherAvailability.getTimezone() != null
+                ? teacherAvailability.getTimezone()
+                : DEFAULT_TIMEZONE;
+
+        LocalDate today = LocalDate.now(java.time.ZoneId.of(teacherTimezone));
         LocalDate futureDate = today.plusMonths(6);
 
         List<DateSpecificAvailability> availabilities = dateSpecificRepository
                 .findByTeacherIdAndDateBetween(teacherId, today, futureDate);
+
+        List<Booking> teacherBookings = bookingRepository.findByTeacherId(teacherId).stream()
+                .filter(this::blocksAvailability)
+                .toList();
 
         Map<String, List<TimeSlot>> result = new LinkedHashMap<>();
 
@@ -286,13 +302,15 @@ public class AvailabilityManagementService {
                     List<TimeSlot> filteredSlots = (mode == null)
                             ? allSlotsForDate
                             : allSlotsForDate.stream()
-                            .filter(slot ->
-                                    (mode == SessionMode.ONE_ON_ONE && slot.getMode() == null) ||
-                                            slot.getMode() == mode)
+                            .filter(slot -> matchesMode(slot, mode))
                             .toList();
 
-                    if (!filteredSlots.isEmpty()) {
-                        result.put(avail.getDate().toString(), filteredSlots);
+                    List<TimeSlot> reconciledSlots = filteredSlots.stream()
+                            .map(slot -> reconcileSlotWithBookings(avail.getDate(), slot, teacherBookings))
+                            .toList();
+
+                    if (!reconciledSlots.isEmpty()) {
+                        result.put(avail.getDate().toString(), reconciledSlots);
                     }
                 });
 
@@ -428,6 +446,87 @@ public class AvailabilityManagementService {
                 );
             }
         }
+    }
+
+    private boolean matchesMode(TimeSlot slot, SessionMode mode) {
+        if (mode == null) {
+            return true;
+        }
+        if (slot == null) {
+            return false;
+        }
+        if (mode == SessionMode.BOTH) {
+            return true;
+        }
+        if (slot.getMode() == null) {
+            return mode == SessionMode.ONE_ON_ONE;
+        }
+        return slot.getMode() == mode || slot.getMode() == SessionMode.BOTH;
+    }
+
+    private boolean blocksAvailability(Booking booking) {
+        if (booking == null || booking.getStatus() == null) {
+            return false;
+        }
+        return booking.getStatus() == BookingStatus.CONFIRMED
+                || booking.getStatus() == BookingStatus.PENDING
+                || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
+    }
+
+    private TimeSlot reconcileSlotWithBookings(LocalDate slotDate, TimeSlot slot, List<Booking> teacherBookings) {
+        TimeSlot normalizedSlot = validateAndNormalizeSlot(slot, "date-specific availability reconciliation");
+
+        boolean occupied = teacherBookings.stream()
+                .anyMatch(booking -> bookingOccupiesSlot(booking, slotDate, normalizedSlot));
+
+        return TimeSlot.builder()
+                .startTime(normalizedSlot.getStartTime())
+                .endTime(normalizedSlot.getEndTime())
+                .mode(normalizedSlot.getMode())
+                .isAvailable(Boolean.TRUE.equals(normalizedSlot.getIsAvailable()) && !occupied)
+                .build();
+    }
+
+    private boolean bookingOccupiesSlot(Booking booking, LocalDate slotDate, TimeSlot slot) {
+        if (booking == null || slotDate == null || slot == null) {
+            return false;
+        }
+
+        if (booking.getSessions() != null && !booking.getSessions().isEmpty()) {
+            return booking.getSessions().stream()
+                    .anyMatch(session ->
+                            overlapsWithSlot(slotDate, slot, session.getStartTime(), session.getEndTime()));
+        }
+
+        return overlapsWithSlot(
+                slotDate,
+                slot,
+                booking.getSessionStartTime(),
+                booking.getSessionEndTime()
+        );
+    }
+
+    private boolean overlapsWithSlot(
+            LocalDate slotDate,
+            TimeSlot slot,
+            LocalDateTime bookingStart,
+            LocalDateTime bookingEnd
+    ) {
+        if (bookingStart == null || bookingEnd == null) {
+            return false;
+        }
+
+        if (!bookingStart.toLocalDate().equals(slotDate)) {
+            return false;
+        }
+
+        LocalTime slotStart = LocalTime.parse(normalizeTimeString(slot.getStartTime()), FLEXIBLE_TIME_FORMATTER);
+        LocalTime slotEnd = LocalTime.parse(normalizeTimeString(slot.getEndTime()), FLEXIBLE_TIME_FORMATTER);
+
+        LocalTime bookingStartTime = bookingStart.toLocalTime();
+        LocalTime bookingEndTime = bookingEnd.toLocalTime();
+
+        return bookingStartTime.isBefore(slotEnd) && bookingEndTime.isAfter(slotStart);
     }
 
     private String normalizeTimeString(String time) {
