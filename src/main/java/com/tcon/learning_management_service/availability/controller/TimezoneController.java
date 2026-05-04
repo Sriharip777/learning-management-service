@@ -33,7 +33,7 @@ public class TimezoneController {
     public ResponseEntity<List<TimezoneResponseDto>> getAllTimezones() {
         log.info("Fetching all global timezones");
         List<TimezoneResponseDto> timezones = timezoneService.getAllTimezones();
-        log.info("Returning {} global timezone entries", timezones.size());
+        log.info("Returning {} timezone entries", timezones.size());
         return ResponseEntity.ok(timezones);
     }
 
@@ -75,13 +75,22 @@ public class TimezoneController {
                                                 .collect(Collectors.toList());
                                     }
 
-                                    return timezoneService.convertSlotsToTimezone(slots, timezone);
+                                    String sourceTimezone = avail.getTimezone() != null
+                                            ? avail.getTimezone()
+                                            : "UTC";
+
+                                    return timezoneService.convertSlotsToTimezone(
+                                            slots,
+                                            sourceTimezone,
+                                            timezone,
+                                            avail.getDate()
+                                    );
                                 },
                                 (existing, replacement) -> existing,
                                 LinkedHashMap::new
                         ));
 
-        log.info("Returning timezone-converted date-specific slots for {} dates", result.size());
+        log.info("Returning converted date-specific slots for {} dates", result.size());
         return ResponseEntity.ok(result);
     }
 
@@ -95,12 +104,20 @@ public class TimezoneController {
 
         return teacherAvailabilityRepository.findByTeacherId(teacherId)
                 .map(availability -> {
+                    String sourceTimezone = availability.getTimezone() != null
+                            ? availability.getTimezone()
+                            : "UTC";
+
                     Map<String, List<TimeSlotDisplayDto>> result =
                             availability.getWeeklyAvailability().entrySet().stream()
                                     .collect(Collectors.toMap(
                                             entry -> entry.getKey().name(),
                                             entry -> timezoneService.convertSlotsToTimezone(
-                                                    entry.getValue(), timezone),
+                                                    entry.getValue(),
+                                                    sourceTimezone,
+                                                    timezone,
+                                                    resolveNextDate(entry.getKey())
+                                            ),
                                             (existing, replacement) -> existing,
                                             LinkedHashMap::new
                                     ));
@@ -131,7 +148,7 @@ public class TimezoneController {
                                     timezone
                             );
 
-                    log.info("Returning weekly pattern display for teacher {}", teacherId);
+                    log.info("Returning weekly pattern for teacher {}", teacherId);
                     return ResponseEntity.ok(display);
                 })
                 .orElse(ResponseEntity.ok(
@@ -142,5 +159,16 @@ public class TimezoneController {
                                 .timezoneId(timezone)
                                 .build()
                 ));
+    }
+
+    private LocalDate resolveNextDate(java.time.DayOfWeek dayOfWeek) {
+        LocalDate today = LocalDate.now();
+        int diff = dayOfWeek.getValue() - today.getDayOfWeek().getValue();
+
+        if (diff < 0) {
+            diff += 7;
+        }
+
+        return today.plusDays(diff);
     }
 }

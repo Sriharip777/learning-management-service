@@ -8,10 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -52,13 +49,19 @@ public class TimezoneService {
 
     public List<TimeSlotDisplayDto> convertSlotsToTimezone(
             List<TimeSlot> slots,
-            String targetTimezoneId) {
+            String sourceTimezoneId,
+            String targetTimezoneId,
+            LocalDate slotDate) {
 
+        String validatedSourceTimezone = timezoneValidationService.validateAndNormalizeTimezone(sourceTimezoneId);
         String validatedTargetTimezone = timezoneValidationService.validateAndNormalizeTimezone(targetTimezoneId);
+
+        ZoneId sourceZone = ZoneId.of(validatedSourceTimezone);
         ZoneId targetZone = ZoneId.of(validatedTargetTimezone);
+        LocalDate effectiveDate = slotDate != null ? slotDate : LocalDate.now();
 
         return slots.stream()
-                .map(slot -> convertSingleSlot(slot, targetZone, validatedTargetTimezone))
+                .map(slot -> convertSingleSlot(slot, sourceZone, targetZone, effectiveDate, validatedTargetTimezone))
                 .collect(Collectors.toList());
     }
 
@@ -76,6 +79,8 @@ public class TimezoneService {
         ZoneId sourceZone = ZoneId.of(validatedSourceTimezone);
         ZoneId targetZone = ZoneId.of(validatedTargetTimezone);
 
+        LocalDate referenceDate = resolveReferenceDate(days);
+
         String displayStart = timeStart;
         String displayEnd = timeEnd;
         String timezoneAbbreviation = "";
@@ -86,16 +91,16 @@ public class TimezoneService {
                 LocalTime start = LocalTime.parse(timeStart, FLEXIBLE_TIME_FORMATTER);
                 LocalTime end = LocalTime.parse(timeEnd, FLEXIBLE_TIME_FORMATTER);
 
-                ZonedDateTime startConverted = ZonedDateTime.of(LocalDate.now(), start, sourceZone)
-                        .withZoneSameInstant(targetZone);
+                ZonedDateTime sourceStart = ZonedDateTime.of(referenceDate, start, sourceZone);
+                ZonedDateTime sourceEnd = ZonedDateTime.of(referenceDate, end, sourceZone);
 
-                ZonedDateTime endConverted = ZonedDateTime.of(LocalDate.now(), end, sourceZone)
-                        .withZoneSameInstant(targetZone);
+                ZonedDateTime targetStart = sourceStart.withZoneSameInstant(targetZone);
+                ZonedDateTime targetEnd = sourceEnd.withZoneSameInstant(targetZone);
 
-                displayStart = startConverted.format(DISPLAY_TIME_FORMATTER);
-                displayEnd = endConverted.format(DISPLAY_TIME_FORMATTER);
-                timezoneAbbreviation = startConverted.format(TIMEZONE_ABBR_FORMATTER);
-                utcOffset = startConverted.format(OFFSET_FORMATTER);
+                displayStart = targetStart.format(DISPLAY_TIME_FORMATTER);
+                displayEnd = targetEnd.format(DISPLAY_TIME_FORMATTER);
+                timezoneAbbreviation = targetStart.format(TIMEZONE_ABBR_FORMATTER);
+                utcOffset = targetStart.format(OFFSET_FORMATTER);
             }
         } catch (Exception e) {
             log.error("Error converting weekly pattern from {} to {}: {}",
@@ -131,30 +136,35 @@ public class TimezoneService {
 
     private TimeSlotDisplayDto convertSingleSlot(
             TimeSlot slot,
+            ZoneId sourceZone,
             ZoneId targetZone,
+            LocalDate slotDate,
             String timezoneId) {
 
         try {
             LocalTime start = LocalTime.parse(slot.getStartTime(), FLEXIBLE_TIME_FORMATTER);
             LocalTime end = LocalTime.parse(slot.getEndTime(), FLEXIBLE_TIME_FORMATTER);
 
-            ZonedDateTime startConverted = ZonedDateTime.of(LocalDate.now(), start, targetZone);
-            ZonedDateTime endConverted = ZonedDateTime.of(LocalDate.now(), end, targetZone);
+            ZonedDateTime sourceStart = ZonedDateTime.of(slotDate, start, sourceZone);
+            ZonedDateTime sourceEnd = ZonedDateTime.of(slotDate, end, sourceZone);
+
+            ZonedDateTime targetStart = sourceStart.withZoneSameInstant(targetZone);
+            ZonedDateTime targetEnd = sourceEnd.withZoneSameInstant(targetZone);
 
             return TimeSlotDisplayDto.builder()
                     .startTime(slot.getStartTime())
                     .endTime(slot.getEndTime())
                     .isAvailable(slot.getIsAvailable())
                     .mode(slot.getMode())
-                    .displayStartTime(startConverted.format(DISPLAY_TIME_FORMATTER))
-                    .displayEndTime(endConverted.format(DISPLAY_TIME_FORMATTER))
-                    .timezoneAbbreviation(startConverted.format(TIMEZONE_ABBR_FORMATTER))
+                    .displayStartTime(targetStart.format(DISPLAY_TIME_FORMATTER))
+                    .displayEndTime(targetEnd.format(DISPLAY_TIME_FORMATTER))
+                    .timezoneAbbreviation(targetStart.format(TIMEZONE_ABBR_FORMATTER))
                     .timezoneId(timezoneId)
-                    .utcOffset(startConverted.format(OFFSET_FORMATTER))
+                    .utcOffset(targetStart.format(OFFSET_FORMATTER))
                     .build();
 
         } catch (Exception e) {
-            log.error("Error converting time slot {} - {}: {}",
+            log.error("Error converting slot {} - {} : {}",
                     slot.getStartTime(), slot.getEndTime(), e.getMessage());
 
             return TimeSlotDisplayDto.builder()
@@ -169,6 +179,45 @@ public class TimezoneService {
                     .utcOffset("")
                     .build();
         }
+    }
+
+    private LocalDate resolveReferenceDate(List<Integer> days) {
+        LocalDate today = LocalDate.now();
+
+        if (days == null || days.isEmpty()) {
+            return today;
+        }
+
+        Integer firstDay = days.stream()
+                .filter(day -> day != null && day >= 0 && day <= 6)
+                .findFirst()
+                .orElse(null);
+
+        if (firstDay == null) {
+            return today;
+        }
+
+        DayOfWeek targetDay = mapToDayOfWeek(firstDay);
+        int diff = targetDay.getValue() - today.getDayOfWeek().getValue();
+
+        if (diff < 0) {
+            diff += 7;
+        }
+
+        return today.plusDays(diff);
+    }
+
+    private DayOfWeek mapToDayOfWeek(int day) {
+        return switch (day) {
+            case 0 -> DayOfWeek.SUNDAY;
+            case 1 -> DayOfWeek.MONDAY;
+            case 2 -> DayOfWeek.TUESDAY;
+            case 3 -> DayOfWeek.WEDNESDAY;
+            case 4 -> DayOfWeek.THURSDAY;
+            case 5 -> DayOfWeek.FRIDAY;
+            case 6 -> DayOfWeek.SATURDAY;
+            default -> throw new IllegalArgumentException("Invalid day index: " + day);
+        };
     }
 
     private List<String> resolveDayNames(List<Integer> days) {

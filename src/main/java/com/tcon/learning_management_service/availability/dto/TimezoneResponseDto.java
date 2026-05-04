@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TimezoneResponseDto {
-    private String timezoneId;            // e.g. "Asia/Kolkata"
-    private String displayName;           // e.g. "Asia/Kolkata"
-    private String currentTime;           // e.g. "03:30 PM IST"
-    private String currentOffset;         // e.g. "+05:30"
-    private String timezoneAbbreviation;  // e.g. "IST"
+    private String timezoneId;
+    private String displayName;
+    private String currentTime;
+    private String currentOffset;
+    private String timezoneAbbreviation;
 }
