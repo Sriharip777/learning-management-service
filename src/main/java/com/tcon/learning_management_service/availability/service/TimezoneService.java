@@ -1,127 +1,67 @@
 package com.tcon.learning_management_service.availability.service;
 
-import com.tcon.learning_management_service.availability.dto.TimezoneResponseDto;
 import com.tcon.learning_management_service.availability.dto.TimeSlotDisplayDto;
-import com.tcon.learning_management_service.availability.dto.UsaTimezone;
+import com.tcon.learning_management_service.availability.dto.TimezoneResponseDto;
 import com.tcon.learning_management_service.availability.dto.WeeklyPatternDisplayDto;
 import com.tcon.learning_management_service.availability.entity.TimeSlot;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.*;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TimezoneService {
 
-    private static final DateTimeFormatter DISPLAY_FORMATTER =
+    private static final DateTimeFormatter DISPLAY_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("hh:mm a");
+
+    private static final DateTimeFormatter DISPLAY_TIME_WITH_ZONE_FORMATTER =
             DateTimeFormatter.ofPattern("hh:mm a z");
 
-    private static final DateTimeFormatter STORE_FORMATTER =
-            DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter TIMEZONE_ABBR_FORMATTER =
+            DateTimeFormatter.ofPattern("z");
 
-    /**
-     * Returns all USA state timezones for frontend dropdown
-     */
-    public List<TimezoneResponseDto> getAllUsaTimezones() {
-        return Arrays.stream(UsaTimezone.values())
-                .flatMap(tz -> {
-                    try {
-                        ZoneId zoneId = ZoneId.of(tz.getTimezoneId());
-                        ZonedDateTime now = ZonedDateTime.now(zoneId);
+    private static final DateTimeFormatter OFFSET_FORMATTER =
+            DateTimeFormatter.ofPattern("XXX");
 
-                        TimezoneResponseDto dto = TimezoneResponseDto.builder()
-                                .stateName(tz.getStateName())
-                                .stateCode(tz.getStateCode())
-                                .timezoneId(tz.getTimezoneId())
-                                .timezoneLabel(tz.getTimezoneLabel())
-                                .utcOffset(tz.getUtcOffset())
-                                .currentTime(now.format(DISPLAY_FORMATTER))
-                                .build();
+    private static final DateTimeFormatter FLEXIBLE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("HH:mm[:ss]");
 
-                        return java.util.stream.Stream.of(dto);
-                    } catch (Exception e) {
-                        log.error("Invalid timezoneId '{}' for enum {}: {}",
-                                tz.getTimezoneId(), tz.name(), e.getMessage());
-                        return java.util.stream.Stream.<TimezoneResponseDto>empty();
-                    }
-                })
+    private final TimezoneValidationService timezoneValidationService;
+
+    public List<TimezoneResponseDto> getAllTimezones() {
+        return timezoneValidationService.getAllAvailableTimezones()
+                .stream()
+                .map(this::buildTimezoneResponse)
                 .collect(Collectors.toList());
     }
 
+    public TimezoneResponseDto getTimezoneDetails(String timezoneId) {
+        String validatedTimezone = timezoneValidationService.validateAndNormalizeTimezone(timezoneId);
+        return buildTimezoneResponse(validatedTimezone);
+    }
 
-    /**
-     * Convert a list of TimeSlots to display format in the given timezone
-     * stored times are in "HH:mm" (optionally with seconds) in UTC
-     */
     public List<TimeSlotDisplayDto> convertSlotsToTimezone(
             List<TimeSlot> slots,
             String targetTimezoneId) {
 
-        ZoneId targetZone = ZoneId.of(targetTimezoneId);
-        ZoneId utcZone    = ZoneId.of("UTC");
+        String validatedTargetTimezone = timezoneValidationService.validateAndNormalizeTimezone(targetTimezoneId);
+        ZoneId targetZone = ZoneId.of(validatedTargetTimezone);
 
-        UsaTimezone usaTimezone = null;
-        try {
-            usaTimezone = UsaTimezone.findByTimezoneId(targetTimezoneId);
-        } catch (IllegalArgumentException e) {
-            log.warn("Not a USA timezone: {}", targetTimezoneId);
-        }
-        final UsaTimezone finalUsaTimezone = usaTimezone;
-
-        DateTimeFormatter parseTimeFormatter =
-                DateTimeFormatter.ofPattern("HH:mm[:ss]");
-
-        return slots.stream().map(slot -> {
-            try {
-                LocalTime startUtc = LocalTime.parse(slot.getStartTime(), parseTimeFormatter);
-                LocalTime endUtc   = LocalTime.parse(slot.getEndTime(),   parseTimeFormatter);
-
-                ZonedDateTime startConverted = ZonedDateTime.of(
-                                LocalDate.now(), startUtc, utcZone)
-                        .withZoneSameInstant(targetZone);
-
-                ZonedDateTime endConverted = ZonedDateTime.of(
-                                LocalDate.now(), endUtc, utcZone)
-                        .withZoneSameInstant(targetZone);
-
-                return TimeSlotDisplayDto.builder()
-                        .startTime(slot.getStartTime())
-                        .endTime(slot.getEndTime())
-                        .isAvailable(slot.getIsAvailable())
-                        .mode(slot.getMode())
-                        .displayStartTime(startConverted.format(DateTimeFormatter.ofPattern("hh:mm a")))
-                        .displayEndTime(endConverted.format(DateTimeFormatter.ofPattern("hh:mm a")))
-                        .timezoneAbbreviation(startConverted.format(DateTimeFormatter.ofPattern("z")))
-                        .timezoneId(targetTimezoneId)
-                        .stateName(finalUsaTimezone != null ? finalUsaTimezone.getStateName() : "")
-                        .stateCode(finalUsaTimezone != null ? finalUsaTimezone.getStateCode() : "")
-                        .build();
-
-            } catch (Exception e) {
-                log.error("Error converting slot {} - {}: {}",
-                        slot.getStartTime(), slot.getEndTime(), e.getMessage());
-
-                return TimeSlotDisplayDto.builder()
-                        .startTime(slot.getStartTime())
-                        .endTime(slot.getEndTime())
-                        .isAvailable(slot.getIsAvailable())
-                        .mode(slot.getMode())
-                        .displayStartTime(slot.getStartTime())
-                        .displayEndTime(slot.getEndTime())
-                        .timezoneId(targetTimezoneId)
-                        .build();
-            }
-        }).collect(Collectors.toList());
+        return slots.stream()
+                .map(slot -> convertSingleSlot(slot, targetZone, validatedTargetTimezone))
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Convert weekly pattern start/end times to viewer's selected timezone
-     */
     public WeeklyPatternDisplayDto convertPatternToTimezone(
             String timeStart,
             String timeEnd,
@@ -130,64 +70,117 @@ public class TimezoneService {
             String storedTimezoneId,
             String targetTimezoneId) {
 
-        ZoneId sourceZone = ZoneId.of(storedTimezoneId != null ? storedTimezoneId : "UTC");
-        ZoneId targetZone = ZoneId.of(targetTimezoneId);
+        String validatedSourceTimezone = timezoneValidationService.validateAndNormalizeTimezone(storedTimezoneId);
+        String validatedTargetTimezone = timezoneValidationService.validateAndNormalizeTimezone(targetTimezoneId);
 
-        String[] dayNames = {"SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"};
-
-        List<String> selectedDayNames = new java.util.ArrayList<>();
-        if (days != null) {
-            for (Integer d : days) {
-                if (d != null && d >= 0 && d <= 6) {
-                    selectedDayNames.add(dayNames[d]);
-                }
-            }
-        }
+        ZoneId sourceZone = ZoneId.of(validatedSourceTimezone);
+        ZoneId targetZone = ZoneId.of(validatedTargetTimezone);
 
         String displayStart = timeStart;
-        String displayEnd   = timeEnd;
-        String tzAbbr       = "";
+        String displayEnd = timeEnd;
+        String timezoneAbbreviation = "";
+        String utcOffset = "";
 
         try {
-            if (timeStart != null && timeEnd != null) {
-                LocalTime startTime = LocalTime.parse(timeStart, STORE_FORMATTER);
-                LocalTime endTime   = LocalTime.parse(timeEnd,   STORE_FORMATTER);
+            if (timeStart != null && !timeStart.isBlank() && timeEnd != null && !timeEnd.isBlank()) {
+                LocalTime start = LocalTime.parse(timeStart, FLEXIBLE_TIME_FORMATTER);
+                LocalTime end = LocalTime.parse(timeEnd, FLEXIBLE_TIME_FORMATTER);
 
-                ZonedDateTime startConverted = ZonedDateTime.of(
-                                LocalDate.now(), startTime, sourceZone)
-                        .withZoneSameInstant(targetZone);
-                ZonedDateTime endConverted = ZonedDateTime.of(
-                                LocalDate.now(), endTime, sourceZone)
+                ZonedDateTime startConverted = ZonedDateTime.of(LocalDate.now(), start, sourceZone)
                         .withZoneSameInstant(targetZone);
 
-                displayStart = startConverted.format(DateTimeFormatter.ofPattern("hh:mm a"));
-                displayEnd   = endConverted.format(DateTimeFormatter.ofPattern("hh:mm a"));
-                tzAbbr       = startConverted.format(DateTimeFormatter.ofPattern("z"));
+                ZonedDateTime endConverted = ZonedDateTime.of(LocalDate.now(), end, sourceZone)
+                        .withZoneSameInstant(targetZone);
+
+                displayStart = startConverted.format(DISPLAY_TIME_FORMATTER);
+                displayEnd = endConverted.format(DISPLAY_TIME_FORMATTER);
+                timezoneAbbreviation = startConverted.format(TIMEZONE_ABBR_FORMATTER);
+                utcOffset = startConverted.format(OFFSET_FORMATTER);
             }
         } catch (Exception e) {
-            log.error("Pattern time conversion error: {}", e.getMessage());
-        }
-
-        UsaTimezone usaTimezone = null;
-        try {
-            usaTimezone = UsaTimezone.findByTimezoneId(targetTimezoneId);
-        } catch (IllegalArgumentException e) {
-            log.warn("Not a USA timezone: {}", targetTimezoneId);
+            log.error("Error converting weekly pattern from {} to {}: {}",
+                    validatedSourceTimezone, validatedTargetTimezone, e.getMessage());
         }
 
         return WeeklyPatternDisplayDto.builder()
                 .enabled(enabled)
-                .days(days)
-                .dayNames(selectedDayNames)
+                .days(days != null ? days : List.of())
+                .dayNames(resolveDayNames(days))
                 .timeStart(timeStart)
                 .timeEnd(timeEnd)
                 .displayTimeStart(displayStart)
                 .displayTimeEnd(displayEnd)
-                .timezoneAbbreviation(tzAbbr)
-                .timezoneId(targetTimezoneId)
-                .stateName(usaTimezone != null ? usaTimezone.getStateName() : "")
-                .stateCode(usaTimezone != null ? usaTimezone.getStateCode() : "")
-                .utcOffset(usaTimezone != null ? usaTimezone.getUtcOffset() : "")
+                .timezoneAbbreviation(timezoneAbbreviation)
+                .timezoneId(validatedTargetTimezone)
+                .utcOffset(utcOffset)
                 .build();
+    }
+
+    private TimezoneResponseDto buildTimezoneResponse(String timezoneId) {
+        ZoneId zoneId = ZoneId.of(timezoneId);
+        ZonedDateTime now = ZonedDateTime.now(zoneId);
+
+        return TimezoneResponseDto.builder()
+                .timezoneId(timezoneId)
+                .displayName(timezoneId)
+                .currentTime(now.format(DISPLAY_TIME_WITH_ZONE_FORMATTER))
+                .currentOffset(now.format(OFFSET_FORMATTER))
+                .timezoneAbbreviation(now.format(TIMEZONE_ABBR_FORMATTER))
+                .build();
+    }
+
+    private TimeSlotDisplayDto convertSingleSlot(
+            TimeSlot slot,
+            ZoneId targetZone,
+            String timezoneId) {
+
+        try {
+            LocalTime start = LocalTime.parse(slot.getStartTime(), FLEXIBLE_TIME_FORMATTER);
+            LocalTime end = LocalTime.parse(slot.getEndTime(), FLEXIBLE_TIME_FORMATTER);
+
+            ZonedDateTime startConverted = ZonedDateTime.of(LocalDate.now(), start, targetZone);
+            ZonedDateTime endConverted = ZonedDateTime.of(LocalDate.now(), end, targetZone);
+
+            return TimeSlotDisplayDto.builder()
+                    .startTime(slot.getStartTime())
+                    .endTime(slot.getEndTime())
+                    .isAvailable(slot.getIsAvailable())
+                    .mode(slot.getMode())
+                    .displayStartTime(startConverted.format(DISPLAY_TIME_FORMATTER))
+                    .displayEndTime(endConverted.format(DISPLAY_TIME_FORMATTER))
+                    .timezoneAbbreviation(startConverted.format(TIMEZONE_ABBR_FORMATTER))
+                    .timezoneId(timezoneId)
+                    .utcOffset(startConverted.format(OFFSET_FORMATTER))
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error converting time slot {} - {}: {}",
+                    slot.getStartTime(), slot.getEndTime(), e.getMessage());
+
+            return TimeSlotDisplayDto.builder()
+                    .startTime(slot.getStartTime())
+                    .endTime(slot.getEndTime())
+                    .isAvailable(slot.getIsAvailable())
+                    .mode(slot.getMode())
+                    .displayStartTime(slot.getStartTime())
+                    .displayEndTime(slot.getEndTime())
+                    .timezoneAbbreviation("")
+                    .timezoneId(timezoneId)
+                    .utcOffset("")
+                    .build();
+        }
+    }
+
+    private List<String> resolveDayNames(List<Integer> days) {
+        String[] names = {"SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"};
+
+        if (days == null) {
+            return List.of();
+        }
+
+        return days.stream()
+                .filter(day -> day != null && day >= 0 && day <= 6)
+                .map(day -> names[day])
+                .collect(Collectors.toList());
     }
 }

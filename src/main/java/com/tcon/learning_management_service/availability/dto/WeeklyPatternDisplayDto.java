@@ -12,24 +12,17 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WeeklyPatternDisplayDto {
-
     private Boolean enabled;
+    private List<Integer> days;
+    private List<String> dayNames;
 
-    // Selected days as numbers and names
-    private List<Integer> days;              // [1, 3]
-    private List<String> dayNames;           // ["MONDAY", "WEDNESDAY"]
+    private String timeStart;
+    private String timeEnd;
 
-    // Original stored times (UTC / teacher's timezone)
-    private String timeStart;               // "14:00"
-    private String timeEnd;                 // "15:00"
+    private String displayTimeStart;
+    private String displayTimeEnd;
 
-    // Converted display times in viewer's selected timezone
-    private String displayTimeStart;        // "09:30 AM"
-    private String displayTimeEnd;          // "10:30 AM"
-    private String timezoneAbbreviation;    // "EST"
-    private String timezoneId;              // "America/New_York"
-    private String stateName;              // "New York"
-    private String stateCode;             // "NY"
-    private String utcOffset;             // "UTC-5/UTC-4"
+    private String timezoneAbbreviation;
+    private String timezoneId;
+    private String utcOffset;
 }
-

@@ -1,4 +1,5 @@
 package com.tcon.learning_management_service.availability.dto;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,17 +11,14 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TimeSlotDisplayDto {
 
-    // Original stored UTC times
-    private String startTime;           // "10:00"
-    private String endTime;             // "11:00"
+    private String startTime;             // stored time
+    private String endTime;               // stored time
     private Boolean isAvailable;
     private SessionMode mode;
 
-    // Timezone-converted display times
-    private String displayStartTime;    // "05:30 AM EST"
-    private String displayEndTime;      // "06:30 AM EST"
-    private String timezoneAbbreviation;// "EST"
-    private String timezoneId;          // "America/New_York"
-    private String stateName;           // "New York"
-    private String stateCode;           // "NY"
+    private String displayStartTime;      // viewer timezone
+    private String displayEndTime;        // viewer timezone
+    private String timezoneAbbreviation;  // e.g. IST / EDT
+    private String timezoneId;            // e.g. Asia/Kolkata
+    private String utcOffset;             // e.g. +05:30
 }
