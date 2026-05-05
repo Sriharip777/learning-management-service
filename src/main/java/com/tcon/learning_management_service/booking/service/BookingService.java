@@ -2,14 +2,14 @@ package com.tcon.learning_management_service.booking.service;
 
 import com.tcon.learning_management_service.availability.entity.TeacherAvailability;
 import com.tcon.learning_management_service.availability.repository.TeacherAvailabilityRepository;
-import com.tcon.learning_management_service.booking.dto.BatchBookingRequest;
-import com.tcon.learning_management_service.booking.dto.BookingDto;
-import com.tcon.learning_management_service.booking.dto.BookingRequest;
+import com.tcon.learning_management_service.booking.dto.*;
 import com.tcon.learning_management_service.booking.entity.Booking;
 import com.tcon.learning_management_service.booking.entity.BookingStatus;
 import com.tcon.learning_management_service.booking.entity.CancellationPolicy;
 import com.tcon.learning_management_service.booking.repository.BookingRepository;
+import com.tcon.learning_management_service.client.UserServiceClient;
 import com.tcon.learning_management_service.client.VideoServiceClient;
+import com.tcon.learning_management_service.client.dto.AssignedStudentOptionDto;
 import com.tcon.learning_management_service.client.dto.VideoSessionCreateRequest;
 import com.tcon.learning_management_service.client.dto.VideoSessionCreateResponse;
 import com.tcon.learning_management_service.demo.service.DemoLimitService;
@@ -22,16 +22,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.*;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -39,6 +36,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BookingService {
 
+    private final UserServiceClient userServiceClient;
     private final BookingRepository bookingRepository;
     private final ClassSessionRepository sessionRepository;
     private final BookingEventPublisher eventPublisher;
@@ -658,6 +656,8 @@ public class BookingService {
         return toDto(updated);
     }
 
+
+
     private CancellationPolicy getDefaultCancellationPolicy() {
         return CancellationPolicy.builder()
                 .hoursBeforeSession(24)
@@ -983,7 +983,252 @@ public class BookingService {
                 .filter(this::hasText)
                 .orElse(APP_ZONE.getId());
     }
+    @Transactional(readOnly = true)
+    public List<TeacherAssignedStudentDto> getAssignedStudentsForTeacher(String teacherId) {
+        if (!hasText(teacherId)) {
+            throw new IllegalArgumentException("Teacher ID is required");
+        }
 
+        log.info("🔍 Fetching assigned students from bookings for teacherId={}", teacherId);
+
+        List<Booking> teacherBookings = bookingRepository.findByTeacherId(teacherId);
+
+        if (teacherBookings == null || teacherBookings.isEmpty()) {
+            log.info("ℹ️ No bookings found for teacherId={}", teacherId);
+            return List.of();
+        }
+
+        Map<String, TeacherAssignedStudentDto> studentMap = new LinkedHashMap<>();
+
+        for (Booking booking : teacherBookings) {
+            if (booking == null) {
+                continue;
+            }
+
+            if (!hasText(booking.getStudentId())) {
+                continue;
+            }
+
+            studentMap.putIfAbsent(
+                    booking.getStudentId(),
+                    TeacherAssignedStudentDto.builder()
+                            .userId(booking.getStudentId())
+                            .studentId(booking.getStudentId())
+                            .name(hasText(booking.getStudentName()) ? booking.getStudentName() : "Student")
+                            .email(booking.getStudentEmail())
+                            .build()
+            );
+        }
+
+        List<TeacherAssignedStudentDto> result = new ArrayList<>(studentMap.values());
+
+        log.info("✅ Found {} assigned students for teacherId={}", result.size(), teacherId);
+
+        return result;
+    }
+
+    @Transactional
+    public List<BookingDto> assignStudentsToTeacherSlot(
+            String teacherHeaderId,
+            TeacherAssignStudentsBookingRequest request
+    ) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request must not be null");
+        }
+
+        if (!hasText(teacherHeaderId)) {
+            throw new IllegalArgumentException("Teacher header ID is required");
+        }
+
+        if (!Objects.equals(teacherHeaderId, request.getTeacherId())) {
+            throw new IllegalArgumentException("Unauthorized: Teacher does not own this slot");
+        }
+
+        if (request.getStudentUserIds() == null || request.getStudentUserIds().isEmpty()) {
+            throw new IllegalArgumentException("At least one student must be selected");
+        }
+
+        if (!hasText(request.getTeacherId())) {
+            throw new IllegalArgumentException("Teacher ID is required");
+        }
+
+        if (!hasText(request.getSubject())) {
+            throw new IllegalArgumentException("Subject is required");
+        }
+
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+
+        validateSessionRange(request.getSessionStartTime(), request.getSessionEndTime());
+        validateBookingTime(request.getSessionStartTime());
+
+        List<String> uniqueStudentUserIds = request.getStudentUserIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(this::hasText)
+                .distinct()
+                .toList();
+
+        if (uniqueStudentUserIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one valid student must be selected");
+        }
+
+        List<TeacherAssignedStudentDto> assignedStudents =
+                getAssignedStudentsForTeacher(request.getTeacherId());
+
+        if (assignedStudents.isEmpty()) {
+            throw new IllegalArgumentException("No assigned students found for this teacher");
+        }
+
+        Map<String, TeacherAssignedStudentDto> assignedStudentMap = assignedStudents.stream()
+                .filter(Objects::nonNull)
+                .filter(student -> hasText(student.getUserId()))
+                .collect(Collectors.toMap(
+                        TeacherAssignedStudentDto::getUserId,
+                        student -> student,
+                        (existing, replacement) -> existing
+                ));
+
+        for (String studentUserId : uniqueStudentUserIds) {
+            if (!assignedStudentMap.containsKey(studentUserId)) {
+                throw new IllegalArgumentException("Student is not assigned to this teacher: " + studentUserId);
+            }
+        }
+
+        List<BookingDto> results = new ArrayList<>();
+
+        for (String studentUserId : uniqueStudentUserIds) {
+            TeacherAssignedStudentDto student = assignedStudentMap.get(studentUserId);
+
+            BookingDto created = createTeacherAssignedBooking(
+                    request,
+                    studentUserId,
+                    hasText(student.getName()) ? student.getName() : "Student",
+                    student.getEmail()
+            );
+
+            results.add(created);
+        }
+
+        return results;
+    }
+
+    private BookingDto createTeacherAssignedBooking(
+            TeacherAssignStudentsBookingRequest request,
+            String studentUserId,
+            String studentName,
+            String studentEmail
+    ) {
+        if (!hasText(studentUserId)) {
+            throw new IllegalArgumentException("Student user ID is required");
+        }
+
+        if (!hasText(studentName)) {
+            studentName = "Student";
+        }
+
+        if (!hasText(studentEmail)) {
+            throw new IllegalArgumentException("Student email is required for assigned booking");
+        }
+
+        String lockKey = buildTeacherSlotLockKey(
+                request.getTeacherId(),
+                request.getSessionStartTime(),
+                request.getSessionEndTime()
+        ) + ":" + studentUserId;
+
+        if (!lockService.acquireLock(lockKey, studentUserId)) {
+            throw new IllegalArgumentException(
+                    "Selected time slot is currently being processed for student: " + studentUserId
+            );
+        }
+
+        try {
+            ensureNoTeacherOverlap(
+                    request.getTeacherId(),
+                    request.getSessionStartTime(),
+                    request.getSessionEndTime()
+            );
+
+            int duration = resolveDurationMinutes(
+                    request.getSessionStartTime(),
+                    request.getSessionEndTime()
+            );
+
+            ClassSession session = ClassSession.builder()
+                    .sessionType(SessionType.ONE_ON_ONE)
+                    .courseId(null)
+                    .teacherId(request.getTeacherId())
+                    .teacherName(hasText(request.getTeacherName()) ? request.getTeacherName() : "Teacher")
+                    .studentId(studentUserId)
+                    .bookingId(null)
+                    .title(hasText(request.getSubject()) ? request.getSubject() : "Assigned Class")
+                    .description("Teacher assigned class for " + studentName)
+                    .status(ClassStatus.SCHEDULED)
+                    .scheduledStartTime(request.getSessionStartTime())
+                    .scheduledEndTime(request.getSessionEndTime())
+                    .durationMinutes(duration)
+                    .maxParticipants(1)
+                    .participants(new ArrayList<>())
+                    .attendedCount(0)
+                    .materialUrls(new ArrayList<>())
+                    .reminderSent(false)
+                    .createdBy(request.getTeacherId())
+                    .build();
+
+            ClassSession savedSession = sessionRepository.save(session);
+
+            LocalDateTime now = LocalDateTime.now(APP_ZONE);
+
+            Booking booking = Booking.builder()
+                    .sessionId(savedSession.getId())
+                    .courseId(null)
+                    .studentId(studentUserId)
+                    .studentName(studentName)
+                    .studentEmail(studentEmail)
+                    .teacherId(request.getTeacherId())
+                    .teacherName(savedSession.getTeacherName())
+                    .parentId(null)
+                    .subject(request.getSubject())
+                    .durationMinutes(duration)
+                    .sessionStartTime(request.getSessionStartTime())
+                    .sessionEndTime(request.getSessionEndTime())
+                    .status(BookingStatus.PENDING_PAYMENT)
+                    .amount(request.getAmount())
+                    .currency(defaultCurrency(request.getCurrency()))
+                    .bookedAt(now)
+                    .cancellationPolicy(getDefaultCancellationPolicy())
+                    .reminderSent(false)
+                    .notes(request.getNotes())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .isFreeDemo(false)
+                    .freeSlotsApplied(0)
+                    .paidSlotsApplied(1)
+                    .build();
+
+            Booking savedBooking = bookingRepository.save(booking);
+
+            savedSession.setBookingId(savedBooking.getId());
+            sessionRepository.save(savedSession);
+
+            eventPublisher.publishBookingCreated(savedBooking);
+
+            log.info(
+                    "✅ Teacher assigned booking created. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
+                    savedBooking.getId(),
+                    savedSession.getId(),
+                    request.getTeacherId(),
+                    studentUserId,
+                    savedBooking.getStatus()
+            );
+
+            return toDto(savedBooking);
+        } finally {
+            lockService.releaseLock(lockKey, studentUserId);
+        }
+    }
     private BookingDto applyDisplayTimezone(BookingDto dto, String timezoneId) {
         String safeTimezoneId = hasText(timezoneId) ? timezoneId : APP_ZONE.getId();
         ZoneId teacherZone = ZoneId.of(safeTimezoneId);

@@ -17,7 +17,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.tcon.learning_management_service.booking.dto.TeacherAssignedStudentDto;
+import com.tcon.learning_management_service.booking.dto.TeacherAssignStudentsBookingRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -74,6 +75,65 @@ public class BookingController {
         }
     }
 
+
+    // ==================== GET ASSIGNED STUDENTS FOR TEACHER ====================
+
+    @GetMapping("/teacher/{teacherId}/assigned-students")
+    public ResponseEntity<?> getAssignedStudentsForTeacher(@PathVariable String teacherId) {
+        log.info("📥 GET /api/bookings/teacher/{}/assigned-students", teacherId);
+
+        try {
+            List<TeacherAssignedStudentDto> students =
+                    bookingService.getAssignedStudentsForTeacher(teacherId);
+
+            log.info("✅ Found {} assigned students for teacher {}", students.size(), teacherId);
+            return ResponseEntity.ok(students);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error fetching assigned students: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(
+                    Map.of("error", e.getMessage())
+            );
+
+        } catch (Exception e) {
+            log.error("❌ Error fetching assigned students", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    Map.of("error", "Failed to fetch assigned students: " + e.getMessage())
+            );
+        }
+    }
+
+    // ==================== TEACHER ASSIGN STUDENTS TO SLOT ====================
+
+    @PostMapping("/teacher/assign-students")
+    public ResponseEntity<?> assignStudentsToTeacherSlot(
+            @RequestHeader("X-User-Id") String teacherId,
+            @Valid @RequestBody TeacherAssignStudentsBookingRequest request) {
+
+        log.info("📥 POST /api/bookings/teacher/assign-students");
+        log.info("🆔 Teacher ID from header: {}", teacherId);
+        log.info("📋 Assign request: {}", request);
+
+        try {
+            List<BookingDto> bookings =
+                    bookingService.assignStudentsToTeacherSlot(teacherId, request);
+
+            log.info("✅ Assigned {} student bookings successfully", bookings.size());
+            return ResponseEntity.status(HttpStatus.CREATED).body(bookings);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error assigning students: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(
+                    Map.of("error", e.getMessage())
+            );
+
+        } catch (Exception e) {
+            log.error("❌ Unexpected error assigning students to teacher slot", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    Map.of("error", "Failed to assign students: " + e.getMessage())
+            );
+        }
+    }
     // ==================== CREATE BATCH BOOKING (NEW) ====================
 
     @PostMapping("/batch")
