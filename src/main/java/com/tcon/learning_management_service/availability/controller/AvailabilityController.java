@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.availability.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
 import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
@@ -12,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -26,7 +26,7 @@ import java.util.Map;
 public class AvailabilityController {
 
     private final AvailabilityManagementService availabilityManagementService;
-    private final ObjectMapper objectMapper;
+
 
     // ==================== WEEKLY AVAILABILITY (EXISTING) ====================
 

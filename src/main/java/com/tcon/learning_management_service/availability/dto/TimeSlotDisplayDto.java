@@ -20,4 +20,7 @@ public class TimeSlotDisplayDto {
     private String timezoneAbbreviation;
     private String timezoneId;
     private String utcOffset;
+
+    private String displayStartDateTime;
+    private String displayEndDateTime;
 }

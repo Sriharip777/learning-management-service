@@ -22,4 +22,6 @@ public interface DateSpecificAvailabilityRepository extends MongoRepository<Date
     void deleteByTeacherId(String teacherId);
 
     List<DateSpecificAvailability> findByTeacherId(String teacherId);
+
+
 }

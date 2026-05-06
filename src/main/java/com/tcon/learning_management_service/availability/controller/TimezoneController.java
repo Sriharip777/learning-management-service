@@ -54,41 +54,61 @@ public class TimezoneController {
         log.info("Fetching timezone-aware date-specific slots for teacher {} in timezone {}",
                 teacherId, timezone);
 
-        LocalDate today = LocalDate.now();
-        LocalDate futureDate = today.plusMonths(6);
+        // ✅ CHANGE: Query with broader window to avoid timezone edge cases
 
-        Map<String, List<TimeSlotDisplayDto>> result =
-                dateSpecificRepository
-                        .findByTeacherIdAndDateBetween(teacherId, today, futureDate)
-                        .stream()
-                        .sorted((a, b) -> a.getDate().compareTo(b.getDate()))
-                        .collect(Collectors.toMap(
-                                avail -> avail.getDate().toString(),
-                                avail -> {
-                                    List<TimeSlot> slots = avail.getTimeSlots();
+        var records = dateSpecificRepository.findByTeacherId(teacherId);
 
-                                    if (mode != null) {
-                                        slots = slots.stream()
-                                                .filter(s ->
-                                                        (mode == SessionMode.ONE_ON_ONE && s.getMode() == null)
-                                                                || s.getMode() == mode)
-                                                .collect(Collectors.toList());
-                                    }
+        // ✅ CHANGE: Build map using converted date as key, not original date
+        Map<String, List<TimeSlotDisplayDto>> result = new LinkedHashMap<>();
 
-                                    String sourceTimezone = avail.getTimezone() != null
-                                            ? avail.getTimezone()
-                                            : "UTC";
+        records.stream()
+                .sorted((a, b) -> a.getDate().compareTo(b.getDate()))
+                .forEach(avail -> {
+                    List<TimeSlot> slots = avail.getTimeSlots();
 
-                                    return timezoneService.convertSlotsToTimezone(
-                                            slots,
-                                            sourceTimezone,
-                                            timezone,
-                                            avail.getDate()
-                                    );
-                                },
-                                (existing, replacement) -> existing,
-                                LinkedHashMap::new
-                        ));
+                    // ✅ CHANGE: Fixed mode filtering to include BOTH
+                    if (mode != null) {
+                        slots = slots.stream()
+                                .filter(s ->
+                                        s.getMode() == null ||
+                                                s.getMode() == SessionMode.BOTH ||
+                                                s.getMode() == mode)
+                                .collect(Collectors.toList());
+                    }
+
+                    String sourceTimezone = avail.getTimezone() != null
+                            ? avail.getTimezone()
+                            : "UTC";
+
+                    List<TimeSlotDisplayDto> converted =
+                            timezoneService.convertSlotsToTimezone(
+                                    slots,
+                                    sourceTimezone,
+                                    timezone,
+                                    avail.getDate()
+                            );
+
+                    // ✅ CHANGE: Group by converted date, not original date
+                    // ✅ CHANGE: Group by converted date, not original date
+                    for (TimeSlotDisplayDto dto : converted) {
+                        String targetDateTime = dto.getDisplayStartDateTime();
+
+                        // Guard against blank/null datetime from conversion errors
+                        if (targetDateTime == null || targetDateTime.length() < 10) {
+                            log.warn("Skipping slot with invalid displayStartDateTime for teacher {}: {}", teacherId, dto);
+                            continue;
+                        }
+
+                        // Extract date from displayStartDateTime (format: "2026-05-06T08:30:00")
+                        String targetDate = targetDateTime.substring(0, 10);
+                        result.computeIfAbsent(targetDate, k -> new java.util.ArrayList<>()).add(dto);
+                    }
+                });
+
+        // ✅ CHANGE: Sort slots within each date by start time
+        result.values().forEach(list ->
+                list.sort(java.util.Comparator.comparing(TimeSlotDisplayDto::getDisplayStartDateTime))
+        );
 
         log.info("Returning converted date-specific slots for {} dates", result.size());
         return ResponseEntity.ok(result);

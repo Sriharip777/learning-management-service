@@ -1026,7 +1026,6 @@ public class BookingService {
 
         return result;
     }
-
     @Transactional
     public List<BookingDto> assignStudentsToTeacherSlot(
             String teacherHeaderId,
@@ -1096,25 +1095,48 @@ public class BookingService {
             }
         }
 
-        List<BookingDto> results = new ArrayList<>();
+        // ✅ CHANGED: Use teacher-level lock (not per student)
+        String slotLockKey = buildTeacherSlotLockKey(
+                request.getTeacherId(),
+                request.getSessionStartTime(),
+                request.getSessionEndTime()
+        );
 
-        for (String studentUserId : uniqueStudentUserIds) {
-            TeacherAssignedStudentDto student = assignedStudentMap.get(studentUserId);
-
-            BookingDto created = createTeacherAssignedBooking(
-                    request,
-                    studentUserId,
-                    hasText(student.getName()) ? student.getName() : "Student",
-                    student.getEmail()
-            );
-
-            results.add(created);
+        if (!lockService.acquireLock(slotLockKey, request.getTeacherId())) {
+            throw new IllegalArgumentException("Selected teacher slot is currently being processed");
         }
 
-        return results;
+        try {
+            // ✅ CHANGED: Use the new smart overlap check that allows same-slot multi-student
+            ensureNoTeacherOverlapForManualAssignment(
+                    request.getTeacherId(),
+                    request.getSessionStartTime(),
+                    request.getSessionEndTime(),
+                    uniqueStudentUserIds
+            );
+
+            List<BookingDto> results = new ArrayList<>();
+
+            for (String studentUserId : uniqueStudentUserIds) {
+                TeacherAssignedStudentDto student = assignedStudentMap.get(studentUserId);
+
+                BookingDto created = createTeacherAssignedBookingWithoutTeacherOverlapCheck(
+                        request,
+                        studentUserId,
+                        hasText(student.getName()) ? student.getName() : "Student",
+                        student.getEmail()
+                );
+
+                results.add(created);
+            }
+
+            return results;
+        } finally {
+            lockService.releaseLock(slotLockKey, request.getTeacherId());
+        }
     }
 
-    private BookingDto createTeacherAssignedBooking(
+    private BookingDto createTeacherAssignedBookingWithoutTeacherOverlapCheck(
             TeacherAssignStudentsBookingRequest request,
             String studentUserId,
             String studentName,
@@ -1132,103 +1154,157 @@ public class BookingService {
             throw new IllegalArgumentException("Student email is required for assigned booking");
         }
 
-        String lockKey = buildTeacherSlotLockKey(
-                request.getTeacherId(),
-                request.getSessionStartTime(),
-                request.getSessionEndTime()
-        ) + ":" + studentUserId;
+        // ✅ NEW: Idempotency check - return existing if already created
+        Optional<Booking> existingBooking = bookingRepository
+                .findByTeacherIdAndStudentIdAndSessionStartTimeAndSessionEndTime(
+                        request.getTeacherId(),
+                        studentUserId,
+                        request.getSessionStartTime(),
+                        request.getSessionEndTime()
+                );
 
-        if (!lockService.acquireLock(lockKey, studentUserId)) {
-            throw new IllegalArgumentException(
-                    "Selected time slot is currently being processed for student: " + studentUserId
-            );
-        }
-
-        try {
-            ensureNoTeacherOverlap(
-                    request.getTeacherId(),
-                    request.getSessionStartTime(),
-                    request.getSessionEndTime()
-            );
-
-            int duration = resolveDurationMinutes(
-                    request.getSessionStartTime(),
-                    request.getSessionEndTime()
-            );
-
-            ClassSession session = ClassSession.builder()
-                    .sessionType(SessionType.ONE_ON_ONE)
-                    .courseId(null)
-                    .teacherId(request.getTeacherId())
-                    .teacherName(hasText(request.getTeacherName()) ? request.getTeacherName() : "Teacher")
-                    .studentId(studentUserId)
-                    .bookingId(null)
-                    .title(hasText(request.getSubject()) ? request.getSubject() : "Assigned Class")
-                    .description("Teacher assigned class for " + studentName)
-                    .status(ClassStatus.SCHEDULED)
-                    .scheduledStartTime(request.getSessionStartTime())
-                    .scheduledEndTime(request.getSessionEndTime())
-                    .durationMinutes(duration)
-                    .maxParticipants(1)
-                    .participants(new ArrayList<>())
-                    .attendedCount(0)
-                    .materialUrls(new ArrayList<>())
-                    .reminderSent(false)
-                    .createdBy(request.getTeacherId())
-                    .build();
-
-            ClassSession savedSession = sessionRepository.save(session);
-
-            LocalDateTime now = LocalDateTime.now(APP_ZONE);
-
-            Booking booking = Booking.builder()
-                    .sessionId(savedSession.getId())
-                    .courseId(null)
-                    .studentId(studentUserId)
-                    .studentName(studentName)
-                    .studentEmail(studentEmail)
-                    .teacherId(request.getTeacherId())
-                    .teacherName(savedSession.getTeacherName())
-                    .parentId(null)
-                    .subject(request.getSubject())
-                    .durationMinutes(duration)
-                    .sessionStartTime(request.getSessionStartTime())
-                    .sessionEndTime(request.getSessionEndTime())
-                    .status(BookingStatus.PENDING_PAYMENT)
-                    .amount(request.getAmount())
-                    .currency(defaultCurrency(request.getCurrency()))
-                    .bookedAt(now)
-                    .cancellationPolicy(getDefaultCancellationPolicy())
-                    .reminderSent(false)
-                    .notes(request.getNotes())
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .isFreeDemo(false)
-                    .freeSlotsApplied(0)
-                    .paidSlotsApplied(1)
-                    .build();
-
-            Booking savedBooking = bookingRepository.save(booking);
-
-            savedSession.setBookingId(savedBooking.getId());
-            sessionRepository.save(savedSession);
-
-            eventPublisher.publishBookingCreated(savedBooking);
-
-            log.info(
-                    "✅ Teacher assigned booking created. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
-                    savedBooking.getId(),
-                    savedSession.getId(),
+        if (existingBooking.isPresent()) {
+            log.warn("⚠️ Assigned booking already exists for teacherId={}, studentId={}, slot={} to {}",
                     request.getTeacherId(),
                     studentUserId,
-                    savedBooking.getStatus()
-            );
+                    request.getSessionStartTime(),
+                    request.getSessionEndTime());
 
-            return toDto(savedBooking);
-        } finally {
-            lockService.releaseLock(lockKey, studentUserId);
+            return toDto(existingBooking.get());
+        }
+
+        int duration = resolveDurationMinutes(
+                request.getSessionStartTime(),
+                request.getSessionEndTime()
+        );
+
+        ClassSession session = ClassSession.builder()
+                .sessionType(SessionType.ONE_ON_ONE)
+                .courseId(null)
+                .teacherId(request.getTeacherId())
+                .teacherName(hasText(request.getTeacherName()) ? request.getTeacherName() : "Teacher")
+                .studentId(studentUserId)
+                .bookingId(null)
+                .title(hasText(request.getSubject()) ? request.getSubject() : "Assigned Class")
+                .description("Teacher assigned class for " + studentName)
+                .status(ClassStatus.SCHEDULED)
+                .scheduledStartTime(request.getSessionStartTime())
+                .scheduledEndTime(request.getSessionEndTime())
+                .durationMinutes(duration)
+                .maxParticipants(1)
+                .participants(new ArrayList<>())
+                .attendedCount(0)
+                .materialUrls(new ArrayList<>())
+                .reminderSent(false)
+                .createdBy(request.getTeacherId())
+                .build();
+
+        ClassSession savedSession = sessionRepository.save(session);
+
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+
+        Booking booking = Booking.builder()
+                .sessionId(savedSession.getId())
+                .courseId(null)
+                .studentId(studentUserId)
+                .studentName(studentName)
+                .studentEmail(studentEmail)
+                .teacherId(request.getTeacherId())
+                .teacherName(savedSession.getTeacherName())
+                .parentId(null)
+                .subject(request.getSubject())
+                .durationMinutes(duration)
+                .sessionStartTime(request.getSessionStartTime())
+                .sessionEndTime(request.getSessionEndTime())
+                .status(BookingStatus.PENDING_PAYMENT)
+                .amount(request.getAmount())
+                .currency(defaultCurrency(request.getCurrency()))
+                .bookedAt(now)
+                .cancellationPolicy(getDefaultCancellationPolicy())
+                .reminderSent(false)
+                .notes(request.getNotes())
+                .createdAt(now)
+                .updatedAt(now)
+                .isFreeDemo(false)
+                .freeSlotsApplied(0)
+                .paidSlotsApplied(1)
+                .build();
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        savedSession.setBookingId(savedBooking.getId());
+        sessionRepository.save(savedSession);
+
+        eventPublisher.publishBookingCreated(savedBooking);
+
+        log.info(
+                "✅ Teacher assigned booking created. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
+                savedBooking.getId(),
+                savedSession.getId(),
+                request.getTeacherId(),
+                studentUserId,
+                savedBooking.getStatus()
+        );
+
+        return toDto(savedBooking);
+    }
+
+    /**
+     * Special overlap check for teacher manual assignment flow.
+     * Allows the same teacher slot to be assigned to multiple selected students,
+     * but blocks overlaps from OTHER bookings/sessions.
+     */
+    private void ensureNoTeacherOverlapForManualAssignment(
+            String teacherId,
+            LocalDateTime requestedStart,
+            LocalDateTime requestedEnd,
+            List<String> requestedStudentUserIds
+    ) {
+        List<ClassSession> overlappingSessions =
+                sessionRepository.findOverlappingSessions(
+                        teacherId,
+                        requestedStart,
+                        requestedEnd
+                );
+
+        if (overlappingSessions == null || overlappingSessions.isEmpty()) {
+            return;
+        }
+
+        // Build set of students being assigned in this request
+        Set<String> requestedStudents = requestedStudentUserIds == null
+                ? Set.of()
+                : requestedStudentUserIds.stream()
+                .filter(this::hasText)
+                .collect(Collectors.toSet());
+
+        // Check each overlapping session
+        for (ClassSession session : overlappingSessions) {
+            if (session == null) {
+                continue;
+            }
+
+            // Is it the exact same slot (same start AND end time)?
+            boolean sameExactSlot =
+                    Objects.equals(session.getScheduledStartTime(), requestedStart) &&
+                            Objects.equals(session.getScheduledEndTime(), requestedEnd);
+
+            // Is it for one of the students we're currently assigning?
+            boolean sameStudentAssignment =
+                    hasText(session.getStudentId()) &&
+                            requestedStudents.contains(session.getStudentId());
+
+            // If it's the same slot AND same student, it's from a previous
+            // attempt or idempotent retry - ALLOW it
+            if (sameExactSlot && sameStudentAssignment) {
+                continue;
+            }
+
+            // Otherwise it's a real conflict - BLOCK it
+            throw new IllegalArgumentException("Time slot already booked for this teacher");
         }
     }
+
     private BookingDto applyDisplayTimezone(BookingDto dto, String timezoneId) {
         String safeTimezoneId = hasText(timezoneId) ? timezoneId : APP_ZONE.getId();
         ZoneId teacherZone = ZoneId.of(safeTimezoneId);
