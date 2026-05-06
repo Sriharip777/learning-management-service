@@ -85,6 +85,8 @@ public class BookingDto {
     private String displayTimezoneId;
     private String displayTimezoneAbbreviation;
 
+    private String subjectName;
+
     @Data
     @Builder
     @NoArgsConstructor

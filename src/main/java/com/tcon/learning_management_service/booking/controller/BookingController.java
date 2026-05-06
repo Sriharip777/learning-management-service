@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import com.tcon.learning_management_service.booking.dto.*;
 
 @Slf4j
 @RestController
@@ -403,5 +404,12 @@ public class BookingController {
                     Map.of("error", e.getMessage())
             );
         }
+    }
+
+    @GetMapping("/teacher/{teacherId}/grades-subjects")
+    public List<TeacherGradeSubjectDto> getTeacherGradesAndSubjects(
+            @PathVariable String teacherId) {
+
+        return bookingService.getTeacherGradeSubjects(teacherId);
     }
 }

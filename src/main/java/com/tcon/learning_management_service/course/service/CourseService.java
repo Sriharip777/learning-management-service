@@ -39,6 +39,10 @@ public class CourseService {
     //        ADMIN ONLY
     // =========================
 
+    public List<Course> getCoursesByTeacherId(String teacherId) {
+        return courseRepository.findByTeacherId(teacherId);
+    }
+
     @Transactional
     public CourseDto createCourseByAdmin(String adminId, CourseCreateRequest request) {
         log.info("Admin {} creating course {}", adminId, request.getTitle());

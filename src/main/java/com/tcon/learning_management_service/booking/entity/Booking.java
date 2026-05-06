@@ -89,6 +89,8 @@ public class Booking {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    private String subjectName;
+
     @Data
     @Builder
     @NoArgsConstructor

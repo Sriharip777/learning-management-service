@@ -31,6 +31,19 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
 
+import com.tcon.learning_management_service.booking.dto.TeacherGradeSubjectDto;
+import com.tcon.learning_management_service.client.CourseClient;
+import com.tcon.learning_management_service.client.dto.CourseDto;
+import com.tcon.learning_management_service.course.service.CourseService;
+import com.tcon.learning_management_service.course.service.GradeService;
+import com.tcon.learning_management_service.course.service.SubjectService;
+import com.tcon.learning_management_service.course.entity.Course;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -51,6 +64,11 @@ public class BookingService {
     private static final int MIN_SESSION_DURATION_MINUTES = 30;
     private static final int MAX_SESSION_DURATION_MINUTES = 180;
 
+    private final CourseClient courseClient;
+    private final CourseService courseService;
+    private final GradeService gradeService;
+    private final SubjectService subjectService;
+
     @Transactional
     public BookingDto createBooking(String studentId, BookingRequest request) {
         log.info("📥 Creating booking for student: {}", studentId);
@@ -66,6 +84,22 @@ public class BookingService {
         } else {
             throw new IllegalArgumentException("Either sessionId or teacherId must be provided");
         }
+    }
+    private String resolveSubjectName(String courseId) {
+        try {
+            if (courseId == null) return null;
+
+            CourseDto course = courseClient.getCourseById(courseId);
+
+            if (course != null) {
+                return course.getSubject();
+            }
+
+        } catch (Exception e) {
+            log.warn("Failed to fetch subject for courseId={}", courseId);
+        }
+
+        return null;
     }
 
     private int getFreeSlotsToApply(String studentId, int requestedSlots) {
@@ -86,6 +120,7 @@ public class BookingService {
         ClassSession session = sessionRepository.findById(request.getSessionId())
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + request.getSessionId()));
 
+        String subjectName = resolveSubjectName(session.getCourseId());
         if (session.getStatus() != ClassStatus.SCHEDULED) {
             throw new IllegalArgumentException("Session is not available for booking");
         }
@@ -122,6 +157,7 @@ public class BookingService {
                     .sessionId(request.getSessionId())
                     .courseId(session.getCourseId())
                     .studentId(studentId)
+                    .subjectName(subjectName)
                     .studentName(request.getStudentName())
                     .studentEmail(request.getStudentEmail())
                     .teacherId(session.getTeacherId())
@@ -238,6 +274,7 @@ public class BookingService {
                     .sessionId(savedSession.getId())
                     .courseId(null)
                     .studentId(studentId)
+                    .subjectName(request.getSubject())
                     .studentName(request.getStudentName())
                     .studentEmail(request.getStudentEmail())
                     .teacherId(request.getTeacherId())
@@ -289,6 +326,50 @@ public class BookingService {
         } finally {
             lockService.releaseLock(lockKey, studentId);
         }
+    }
+
+    public List<TeacherGradeSubjectDto> getTeacherGradeSubjects(String teacherId) {
+
+        log.info("🔥 API HIT: getTeacherGradeSubjects for teacherId={}", teacherId);
+
+        List<Course> courses = courseService.getCoursesByTeacherId(teacherId);
+
+        Map<String, Set<String>> map = new HashMap<>();
+
+        for (Course course : courses) {
+
+            if (course.getGradeId() == null || course.getSubjectId() == null) {
+                continue;
+            }
+
+            // 🔥 resolve grade name
+            String gradeName = gradeService.getAll().stream()
+                    .filter(g -> g.getId().equals(course.getGradeId()))
+                    .map(g -> g.getName())
+                    .findFirst()
+                    .orElse(null);
+
+            // 🔥 resolve subject name
+            String subjectName = subjectService.getByGrade(course.getGradeId()).stream()
+                    .filter(s -> s.getId().equals(course.getSubjectId()))
+                    .map(s -> s.getName())
+                    .findFirst()
+                    .orElse(null);
+
+            if (gradeName == null || subjectName == null) {
+                continue;
+            }
+
+            map.computeIfAbsent(gradeName, k -> new HashSet<>())
+                    .add(subjectName);
+        }
+
+        return map.entrySet().stream()
+                .map(entry -> TeacherGradeSubjectDto.builder()
+                        .grade(entry.getKey())
+                        .subjects(new ArrayList<>(entry.getValue()))
+                        .build())
+                .toList();
     }
 
     @Transactional
@@ -353,6 +434,7 @@ public class BookingService {
                 .sessions(sessionTimes)
                 .amount(recalculatedTotal)
                 .currency(defaultCurrency(request.getCurrency()))
+                .subjectName(resolveSubjectName(request.getCourseId()))
                 .status(BookingStatus.PENDING)
                 .bookedAt(now)
                 .cancellationPolicy(getDefaultCancellationPolicy())
