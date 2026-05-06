@@ -41,19 +41,46 @@ public class WorksheetQueryService {
         List<Worksheet> worksheets;
 
         if (topicId == null || topicId.isEmpty()) {
-            worksheets = worksheetRepository
-                    .findBySubjectIdAndGradeId(subjectId, gradeId)
-                    .stream()
-                    .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
-                    .collect(Collectors.toList());
+
+            // ✅ CASE 1: ONLY GRADE (NO SUBJECT)
+            if (subjectId == null || subjectId.isEmpty()) {
+                worksheets = worksheetRepository
+                        .findByGradeId(gradeId)
+                        .stream()
+                        .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
+                        .collect(Collectors.toList());
+            }
+
+            // ✅ CASE 2: GRADE + SUBJECT
+            else {
+                worksheets = worksheetRepository
+                        .findBySubjectIdAndGradeId(subjectId, gradeId)
+                        .stream()
+                        .filter(w -> w.getStatus() == WorksheetStatus.PUBLISHED)
+                        .collect(Collectors.toList());
+            }
         } else {
-            worksheets = worksheetRepository
-                    .findByGradeIdAndSubjectIdAndTopicIdAndStatus(
-                            gradeId,
-                            subjectId,
-                            topicId,
-                            WorksheetStatus.PUBLISHED
-                    );
+
+            // ✅ CASE 1: GRADE + TOPIC (NO SUBJECT)
+            if (subjectId == null || subjectId.isEmpty()) {
+                worksheets = worksheetRepository
+                        .findByGradeIdAndTopicIdAndStatus(
+                                gradeId,
+                                topicId,
+                                WorksheetStatus.PUBLISHED
+                        );
+            }
+
+            // ✅ CASE 2: GRADE + SUBJECT + TOPIC
+            else {
+                worksheets = worksheetRepository
+                        .findByGradeIdAndSubjectIdAndTopicIdAndStatus(
+                                gradeId,
+                                subjectId,
+                                topicId,
+                                WorksheetStatus.PUBLISHED
+                        );
+            }
         }
 
         // ✅ NO reviewStatus filter here (IMPORTANT)
@@ -158,6 +185,19 @@ public class WorksheetQueryService {
 
         return worksheetRepository
                 .findByStatusOrderByCreatedAtDesc(WorksheetStatus.PUBLISHED)
+                .stream()
+                .map(mapper::toSummary)
+                .collect(Collectors.toList());
+    }
+    /*
+     * ======================================
+     * 🔥 GET ALL PUBLISHED WORKSHEETS (ALL GRADES)
+     * ======================================
+     */
+    public List<WorksheetSummaryResponse> getAllPublishedWorksheets() {
+
+        return worksheetRepository
+                .findByStatus(WorksheetStatus.PUBLISHED)
                 .stream()
                 .map(mapper::toSummary)
                 .collect(Collectors.toList());

@@ -31,7 +31,7 @@ public class WorksheetTeacherController {
      */
     @GetMapping
     public List<WorksheetSummaryResponse> getWorksheets(
-            @RequestParam String subjectId,
+            @RequestParam(required = false) String subjectId,
             @RequestParam String gradeId,
             @RequestParam(required = false) String topicId
     ) {
@@ -46,6 +46,16 @@ public class WorksheetTeacherController {
     @GetMapping("/latest")
     public List<WorksheetSummaryResponse> getLatestWorksheets() {
         return queryService.getLatestPublishedWorksheets();
+    }
+
+    /*
+     * =====================================
+     * 🔥 GET ALL WORKSHEETS (FOR ALL GRADES)
+     * =====================================
+     */
+    @GetMapping("/all")
+    public List<WorksheetSummaryResponse> getAllWorkseetsForTeacher() {
+        return queryService.getAllPublishedWorksheets();
     }
 
     /*
