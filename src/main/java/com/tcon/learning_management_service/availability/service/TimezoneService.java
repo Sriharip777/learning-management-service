@@ -35,6 +35,9 @@ public class TimezoneService {
 
     private final TimezoneValidationService timezoneValidationService;
 
+    private static final DateTimeFormatter ISO_LOCAL_DATE_TIME_SECONDS =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
     public List<TimezoneResponseDto> getAllTimezones() {
         try {
             log.info("TimezoneService#getAllTimezones called");
@@ -171,12 +174,14 @@ public class TimezoneService {
             ZonedDateTime targetEnd = sourceEnd.withZoneSameInstant(targetZone);
 
             return TimeSlotDisplayDto.builder()
-                    .startTime(slot.getStartTime())
-                    .endTime(slot.getEndTime())
+                    .startTime(sourceStart.toLocalDateTime().format(ISO_LOCAL_DATE_TIME_SECONDS))
+                    .endTime(sourceEnd.toLocalDateTime().format(ISO_LOCAL_DATE_TIME_SECONDS))
                     .isAvailable(slot.getIsAvailable())
                     .mode(slot.getMode())
                     .displayStartTime(targetStart.format(DISPLAY_TIME_FORMATTER))
                     .displayEndTime(targetEnd.format(DISPLAY_TIME_FORMATTER))
+                    .displayStartDateTime(targetStart.toLocalDateTime().format(ISO_LOCAL_DATE_TIME_SECONDS))
+                    .displayEndDateTime(targetEnd.toLocalDateTime().format(ISO_LOCAL_DATE_TIME_SECONDS))
                     .timezoneAbbreviation(targetStart.format(TIMEZONE_ABBR_FORMATTER))
                     .timezoneId(timezoneId)
                     .utcOffset(targetStart.format(OFFSET_FORMATTER))
@@ -193,6 +198,8 @@ public class TimezoneService {
                     .mode(slot.getMode())
                     .displayStartTime(slot.getStartTime())
                     .displayEndTime(slot.getEndTime())
+                    .displayStartDateTime("")
+                    .displayEndDateTime("")
                     .timezoneAbbreviation("")
                     .timezoneId(timezoneId)
                     .utcOffset("")
