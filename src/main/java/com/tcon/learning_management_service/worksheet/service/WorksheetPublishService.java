@@ -56,11 +56,14 @@ public class WorksheetPublishService {
         // ✅ ensure flag is correct
         worksheet.setHasQuestions(true);
 
-        // ❗ Prevent publishing flagged worksheets
+        // ✅ Allow publishing even if flagged (override)
         if (worksheet.getReviewStatus() != null &&
                 worksheet.getReviewStatus().name().equals("FLAGGED")) {
 
-            throw new RuntimeException("Cannot publish flagged worksheet. Resolve issues first.");
+            System.out.println("⚠️ Publishing flagged worksheet (override)");
+
+            // 🔥 IMPORTANT: clear flag so it doesn’t block again
+            worksheet.setReviewStatus(null);
         }
 
         // 🔥 EXTRA SAFETY

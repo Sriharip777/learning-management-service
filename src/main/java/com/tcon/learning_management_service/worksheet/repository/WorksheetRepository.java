@@ -12,6 +12,8 @@ public interface WorksheetRepository extends MongoRepository<Worksheet, String> 
     // ✅ Get by status
     List<Worksheet> findByStatus(WorksheetStatus status);
 
+    List<Worksheet> findByGradeId(String gradeId);
+
     // ✅ Basic filtering
     List<Worksheet> findBySubjectIdAndGradeId(
             String subjectId,
@@ -34,6 +36,11 @@ public interface WorksheetRepository extends MongoRepository<Worksheet, String> 
 
     // 🔥 LATEST WORKSHEETS (COLLEAGUE FEATURE)
     List<Worksheet> findByStatusOrderByCreatedAtDesc(
+            WorksheetStatus status
+    );
+    List<Worksheet> findByGradeIdAndTopicIdAndStatus(
+            String gradeId,
+            String topicId,
             WorksheetStatus status
     );
 }
