@@ -24,7 +24,7 @@ public class CourseDto {
 
     private String title;
     private String description;
-
+    private List<String> teacherIds;
     private String gradeId;
     private String subjectId;
     private List<String> topicIds;

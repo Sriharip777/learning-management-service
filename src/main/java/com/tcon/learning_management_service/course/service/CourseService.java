@@ -1,13 +1,30 @@
 package com.tcon.learning_management_service.course.service;
 
 import com.tcon.learning_management_service.course.client.UserServiceClient;
-import com.tcon.learning_management_service.course.dto.*;
-import com.tcon.learning_management_service.course.entity.*;
-import com.tcon.learning_management_service.course.repository.*;
+import com.tcon.learning_management_service.course.dto.AssignedTeacherDto;
+import com.tcon.learning_management_service.course.dto.AvailableTeacherDto;
+import com.tcon.learning_management_service.course.dto.CourseCreateRequest;
+import com.tcon.learning_management_service.course.dto.CourseDto;
+import com.tcon.learning_management_service.course.dto.CourseSessionDto;
+import com.tcon.learning_management_service.course.dto.CourseUpdateRequest;
+import com.tcon.learning_management_service.course.dto.EligibleTeacherRequest;
+import com.tcon.learning_management_service.course.dto.TeacherResponseDto;
+import com.tcon.learning_management_service.course.dto.UserResponseDto;
+import com.tcon.learning_management_service.course.entity.Course;
+import com.tcon.learning_management_service.course.entity.CourseEnrollment;
+import com.tcon.learning_management_service.course.entity.CourseSession;
+import com.tcon.learning_management_service.course.entity.CourseStatus;
+import com.tcon.learning_management_service.course.entity.Grade;
+import com.tcon.learning_management_service.course.entity.Subject;
+import com.tcon.learning_management_service.course.entity.Topic;
+import com.tcon.learning_management_service.course.repository.CourseEnrollmentRepository;
+import com.tcon.learning_management_service.course.repository.CourseRepository;
+import com.tcon.learning_management_service.course.repository.GradeRepository;
+import com.tcon.learning_management_service.course.repository.SubjectRepository;
+import com.tcon.learning_management_service.course.repository.TopicRepository;
 import com.tcon.learning_management_service.event.CourseEventPublisher;
 import com.tcon.learning_management_service.session.dto.SessionScheduleRequest;
 import com.tcon.learning_management_service.session.service.ClassSessionService;
-import com.tcon.learning_management_service.course.dto.EligibleTeacherRequest;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,13 +34,19 @@ import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CourseService {
+
+    private static final String DEFAULT_CURRENCY = "INR";
+    private static final String DEFAULT_TEACHER_NAME = "Expert Instructor";
 
     private final CourseRepository courseRepository;
     private final CourseEnrollmentRepository enrollmentRepository;
@@ -40,7 +63,19 @@ public class CourseService {
     // =========================
 
     public List<Course> getCoursesByTeacherId(String teacherId) {
-        return courseRepository.findByTeacherId(teacherId);
+        if (!hasText(teacherId)) {
+            return List.of();
+        }
+
+        List<Course> legacyCourses = courseRepository.findByTeacherId(teacherId);
+        List<Course> allCourses = courseRepository.findAll();
+
+        List<Course> multiTeacherCourses = allCourses.stream()
+                .filter(Objects::nonNull)
+                .filter(course -> containsTeacher(course, teacherId))
+                .toList();
+
+        return mergeDistinctCourses(legacyCourses, multiTeacherCourses);
     }
 
     @Transactional
@@ -57,7 +92,7 @@ public class CourseService {
 
         Subject subject = subjectRepository.findById(request.getSubjectId())
                 .orElseThrow(() -> new IllegalArgumentException("Subject not found: " + request.getSubjectId()));
-        if (!subject.getGradeId().equals(grade.getId())) {
+        if (!Objects.equals(subject.getGradeId(), grade.getId())) {
             throw new IllegalArgumentException("Subject does not belong to selected grade");
         }
         if (Boolean.FALSE.equals(subject.getIsActive())) {
@@ -72,7 +107,7 @@ public class CourseService {
         if (topics.size() != request.getTopicIds().size()) {
             throw new IllegalArgumentException("Some topics were not found");
         }
-        if (topics.stream().anyMatch(t -> !t.getSubjectId().equals(subject.getId()))) {
+        if (topics.stream().anyMatch(t -> !Objects.equals(t.getSubjectId(), subject.getId()))) {
             throw new IllegalArgumentException("One or more topics do not belong to selected subject");
         }
         if (topics.stream().anyMatch(t -> Boolean.FALSE.equals(t.getIsActive()))) {
@@ -91,10 +126,10 @@ public class CourseService {
                 .description(request.getDescription())
                 .gradeId(grade.getId())
                 .subjectId(subject.getId())
-                .topicIds(request.getTopicIds())
+                .topicIds(cleanStringList(request.getTopicIds()))
                 .status(CourseStatus.DRAFT)
                 .pricePerSession(request.getPricePerSession())
-                .currency(request.getCurrency())
+                .currency(hasText(request.getCurrency()) ? request.getCurrency().trim() : DEFAULT_CURRENCY)
                 .minStudents(request.getMinStudents())
                 .maxStudents(request.getMaxStudents())
                 .currentEnrollments(0)
@@ -118,7 +153,7 @@ public class CourseService {
                 .updatedAt(LocalDateTime.now())
                 .createdBy(adminId)
                 .updatedBy(adminId)
-                // multi-teacher: start with empty list
+                .teacherId(null)
                 .teacherIds(new ArrayList<>())
                 .build();
 
@@ -139,9 +174,11 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        String newGradeId = request.getGradeId() != null ? request.getGradeId() : course.getGradeId();
-        String newSubjectId = request.getSubjectId() != null ? request.getSubjectId() : course.getSubjectId();
-        List<String> newTopicIds = request.getTopicIds() != null ? request.getTopicIds() : course.getTopicIds();
+        String newGradeId = hasText(request.getGradeId()) ? request.getGradeId().trim() : course.getGradeId();
+        String newSubjectId = hasText(request.getSubjectId()) ? request.getSubjectId().trim() : course.getSubjectId();
+        List<String> newTopicIds = request.getTopicIds() != null
+                ? cleanStringList(request.getTopicIds())
+                : defaultList(course.getTopicIds());
 
         Grade grade = gradeRepository.findById(newGradeId)
                 .orElseThrow(() -> new IllegalArgumentException("Grade not found: " + newGradeId));
@@ -151,14 +188,14 @@ public class CourseService {
 
         Subject subject = subjectRepository.findById(newSubjectId)
                 .orElseThrow(() -> new IllegalArgumentException("Subject not found: " + newSubjectId));
-        if (!subject.getGradeId().equals(grade.getId())) {
+        if (!Objects.equals(subject.getGradeId(), grade.getId())) {
             throw new IllegalArgumentException("Subject does not belong to selected grade");
         }
         if (Boolean.FALSE.equals(subject.getIsActive())) {
             throw new IllegalStateException("Subject is inactive: " + subject.getName());
         }
 
-        if (newTopicIds == null || newTopicIds.isEmpty()) {
+        if (newTopicIds.isEmpty()) {
             throw new IllegalArgumentException("At least one topic must be selected");
         }
 
@@ -166,7 +203,7 @@ public class CourseService {
         if (topics.size() != newTopicIds.size()) {
             throw new IllegalArgumentException("Some topics were not found");
         }
-        if (topics.stream().anyMatch(t -> !t.getSubjectId().equals(subject.getId()))) {
+        if (topics.stream().anyMatch(t -> !Objects.equals(t.getSubjectId(), subject.getId()))) {
             throw new IllegalArgumentException("One or more topics do not belong to selected subject");
         }
         if (topics.stream().anyMatch(t -> Boolean.FALSE.equals(t.getIsActive()))) {
@@ -182,16 +219,17 @@ public class CourseService {
         if (request.getSchedule() != null) course.setSchedule(request.getSchedule());
         if (request.getStartDate() != null) course.setStartDate(request.getStartDate());
         if (request.getEndDate() != null) course.setEndDate(request.getEndDate());
-        if (request.getPrerequisites() != null) course.setPrerequisites(request.getPrerequisites());
-        if (request.getLearningOutcomes() != null) course.setLearningOutcomes(request.getLearningOutcomes());
+        if (request.getPrerequisites() != null) course.setPrerequisites(defaultList(request.getPrerequisites()));
+        if (request.getLearningOutcomes() != null) course.setLearningOutcomes(defaultList(request.getLearningOutcomes()));
         if (request.getThumbnailUrl() != null) course.setThumbnailUrl(request.getThumbnailUrl());
-        if (request.getMaterialUrls() != null) course.setMaterialUrls(request.getMaterialUrls());
+        if (request.getMaterialUrls() != null) course.setMaterialUrls(defaultList(request.getMaterialUrls()));
         if (request.getIsDemoAvailable() != null) course.setIsDemoAvailable(request.getIsDemoAvailable());
         if (request.getDemoSessionDuration() != null) course.setDemoSessionDuration(request.getDemoSessionDuration());
 
         course.setGradeId(newGradeId);
         course.setSubjectId(newSubjectId);
         course.setTopicIds(newTopicIds);
+        normalizeTeacherAssignments(course);
         course.setUpdatedBy(adminId);
         course.setUpdatedAt(LocalDateTime.now());
 
@@ -214,6 +252,7 @@ public class CourseService {
             throw new IllegalArgumentException("Only draft courses can be published");
         }
 
+        normalizeTeacherAssignments(course);
         course.setStatus(CourseStatus.PUBLISHED);
         course.setUpdatedBy(adminId);
         course.setUpdatedAt(LocalDateTime.now());
@@ -280,6 +319,8 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
+        normalizeTeacherAssignments(course);
+
         Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
         Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
         List<Topic> topics = course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of();
@@ -288,8 +329,9 @@ public class CourseService {
     }
 
     public List<CourseDto> getTeacherCourses(String teacherId) {
-        return courseRepository.findByTeacherId(teacherId).stream()
+        return getCoursesByTeacherId(teacherId).stream()
                 .map(c -> {
+                    normalizeTeacherAssignments(c);
                     Grade grade = c.getGradeId() != null ? gradeRepository.findById(c.getGradeId()).orElse(null) : null;
                     Subject subject = c.getSubjectId() != null ? subjectRepository.findById(c.getSubjectId()).orElse(null) : null;
                     List<Topic> topics = c.getTopicIds() != null ? topicRepository.findAllById(c.getTopicIds()) : List.of();
@@ -301,6 +343,7 @@ public class CourseService {
     public List<CourseDto> getPublishedCourses() {
         return courseRepository.findByStatus(CourseStatus.PUBLISHED, null).stream()
                 .map(c -> {
+                    normalizeTeacherAssignments(c);
                     Grade grade = c.getGradeId() != null ? gradeRepository.findById(c.getGradeId()).orElse(null) : null;
                     Subject subject = c.getSubjectId() != null ? subjectRepository.findById(c.getSubjectId()).orElse(null) : null;
                     List<Topic> topics = c.getTopicIds() != null ? topicRepository.findAllById(c.getTopicIds()) : List.of();
@@ -308,66 +351,6 @@ public class CourseService {
                 })
                 .collect(Collectors.toList());
     }
-
-    // =========================
-    //  COMMUNICATION / MAPPING
-    // =========================
-
-    public boolean canUsersCommunicate(String user1, String user2) {
-        List<CourseEnrollment> user1Enrollments = enrollmentRepository.findByStudentId(user1);
-        for (CourseEnrollment enrollment : user1Enrollments) {
-            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
-                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
-                if (course != null && user2.equals(course.getTeacherId())) {
-                    return true;
-                }
-            }
-        }
-
-        List<CourseEnrollment> user2Enrollments = enrollmentRepository.findByStudentId(user2);
-        for (CourseEnrollment enrollment : user2Enrollments) {
-            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
-                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
-                if (course != null && user1.equals(course.getTeacherId())) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    public List<String> getTeachersForStudent(String studentId) {
-        List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
-                studentId, CourseEnrollment.EnrollmentStatus.ACTIVE);
-
-        List<String> courseIds = enrollments.stream()
-                .map(CourseEnrollment::getCourseId)
-                .distinct()
-                .toList();
-
-        return courseRepository.findAllById(courseIds).stream()
-                .map(Course::getTeacherId)
-                .distinct()
-                .toList();
-    }
-
-    public List<String> getStudentsForTeacher(String teacherId) {
-        List<Course> courses = courseRepository.findByTeacherId(teacherId);
-        List<String> courseIds = courses.stream().map(Course::getId).toList();
-
-        List<String> studentIds = new ArrayList<>();
-        for (String courseId : courseIds) {
-            List<CourseEnrollment> enrollments = enrollmentRepository.findByCourseIdAndStatus(
-                    courseId, CourseEnrollment.EnrollmentStatus.ACTIVE);
-            studentIds.addAll(enrollments.stream()
-                    .map(CourseEnrollment::getStudentId)
-                    .toList());
-        }
-
-        return studentIds.stream().distinct().toList();
-    }
-
 
     public List<CourseDto> getStudentCourses(String studentId) {
         List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
@@ -381,11 +364,14 @@ public class CourseService {
 
         List<String> courseIds = enrollments.stream()
                 .map(CourseEnrollment::getCourseId)
+                .filter(this::hasText)
                 .distinct()
                 .toList();
 
         return courseRepository.findAllById(courseIds).stream()
                 .map(course -> {
+                    normalizeTeacherAssignments(course);
+
                     Grade grade = course.getGradeId() != null
                             ? gradeRepository.findById(course.getGradeId()).orElse(null)
                             : null;
@@ -402,6 +388,82 @@ public class CourseService {
     }
 
     // =========================
+    //  COMMUNICATION / MAPPING
+    // =========================
+
+    public boolean canUsersCommunicate(String user1, String user2) {
+        if (!hasText(user1) || !hasText(user2)) {
+            return false;
+        }
+
+        List<CourseEnrollment> user1Enrollments = enrollmentRepository.findByStudentId(user1);
+        for (CourseEnrollment enrollment : user1Enrollments) {
+            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
+                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
+                if (course != null && containsTeacher(course, user2)) {
+                    return true;
+                }
+            }
+        }
+
+        List<CourseEnrollment> user2Enrollments = enrollmentRepository.findByStudentId(user2);
+        for (CourseEnrollment enrollment : user2Enrollments) {
+            if (enrollment.getStatus() == CourseEnrollment.EnrollmentStatus.ACTIVE) {
+                Course course = courseRepository.findById(enrollment.getCourseId()).orElse(null);
+                if (course != null && containsTeacher(course, user1)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public List<String> getTeachersForStudent(String studentId) {
+        List<CourseEnrollment> enrollments = enrollmentRepository.findByStudentIdAndStatus(
+                studentId, CourseEnrollment.EnrollmentStatus.ACTIVE);
+
+        List<String> courseIds = enrollments.stream()
+                .map(CourseEnrollment::getCourseId)
+                .filter(this::hasText)
+                .distinct()
+                .toList();
+
+        Set<String> teacherIds = new LinkedHashSet<>();
+
+        for (Course course : courseRepository.findAllById(courseIds)) {
+            teacherIds.addAll(getTeacherIdsFromCourse(course));
+        }
+
+        return teacherIds.stream().toList();
+    }
+
+    public List<String> getStudentsForTeacher(String teacherId) {
+        if (!hasText(teacherId)) {
+            return List.of();
+        }
+
+        List<Course> courses = getCoursesByTeacherId(teacherId);
+        List<String> courseIds = courses.stream()
+                .map(Course::getId)
+                .filter(this::hasText)
+                .distinct()
+                .toList();
+
+        Set<String> studentIds = new LinkedHashSet<>();
+        for (String courseId : courseIds) {
+            List<CourseEnrollment> enrollments = enrollmentRepository.findByCourseIdAndStatus(
+                    courseId, CourseEnrollment.EnrollmentStatus.ACTIVE);
+            studentIds.addAll(enrollments.stream()
+                    .map(CourseEnrollment::getStudentId)
+                    .filter(this::hasText)
+                    .toList());
+        }
+
+        return studentIds.stream().toList();
+    }
+
+    // =========================
     //       DTO HELPERS
     // =========================
 
@@ -410,8 +472,10 @@ public class CourseService {
                                           Subject subject,
                                           List<Topic> topics) {
 
-        List<String> topicNames = topics == null ? List.of() :
-                topics.stream().map(Topic::getName).toList();
+        normalizeTeacherAssignments(course);
+
+        List<String> topicNames = topics == null ? List.of()
+                : topics.stream().filter(Objects::nonNull).map(Topic::getName).toList();
 
         List<CourseSessionDto> sessionDtos = null;
         if (course.getSessions() != null) {
@@ -423,6 +487,7 @@ public class CourseService {
         CourseDto dto = CourseDto.builder()
                 .id(course.getId())
                 .teacherId(course.getTeacherId())
+                .teacherIds(defaultList(course.getTeacherIds()))
                 .title(course.getTitle())
                 .description(course.getDescription())
                 .gradeId(course.getGradeId())
@@ -462,7 +527,9 @@ public class CourseService {
     }
 
     private void enrichWithTeacherInfo(CourseDto courseDto, String teacherUserId) {
-        if (teacherUserId == null) return;
+        if (!hasText(teacherUserId)) {
+            return;
+        }
 
         try {
             UserResponseDto user = userServiceClient.getUserById(teacherUserId);
@@ -471,25 +538,25 @@ public class CourseService {
                 courseDto.setTeacherName(name);
                 courseDto.setTeacherEmail(user.getEmail());
                 courseDto.setTeacherProfilePicture(user.getProfilePicture());
-                log.debug("✅ Teacher name resolved: {}", name);
+                log.debug("Teacher name resolved: {}", name);
             }
         } catch (Exception e) {
             log.warn("Could not fetch user for teacherUserId {}: {}", teacherUserId, e.getMessage());
-            courseDto.setTeacherName("Expert Instructor");
+            courseDto.setTeacherName(DEFAULT_TEACHER_NAME);
         }
 
         try {
             TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
             if (teacher != null) {
                 courseDto.setTeacherBio(teacher.getBio());
-                courseDto.setTeacherSubjects(teacher.getSubjects());
-                courseDto.setTeacherLanguages(teacher.getLanguages());
+                courseDto.setTeacherSubjects(defaultList(teacher.getSubjects()));
+                courseDto.setTeacherLanguages(defaultList(teacher.getLanguages()));
                 courseDto.setTeacherYearsOfExperience(teacher.getYearsOfExperience());
                 courseDto.setTeacherQualifications(teacher.getQualifications());
                 courseDto.setTeacherHourlyRate(teacher.getHourlyRate());
                 courseDto.setTeacherRating(teacher.getAverageRating());
                 courseDto.setTeacherTotalReviews(teacher.getTotalReviews());
-                courseDto.setTeacherExpertise(teacher.getSubjects());
+                courseDto.setTeacherExpertise(defaultList(teacher.getSubjects()));
                 courseDto.setTeacherTimezone(teacher.getTimezone());
                 courseDto.setTeacherIsAvailable(teacher.getIsAvailable());
                 courseDto.setTeacherVerificationStatus(teacher.getVerificationStatus());
@@ -508,8 +575,9 @@ public class CourseService {
 
     private Integer calculateTeacherTotalStudents(String teacherUserId) {
         try {
-            List<Course> teacherCourses = courseRepository.findByTeacherId(teacherUserId);
+            List<Course> teacherCourses = getCoursesByTeacherId(teacherUserId);
             return teacherCourses.stream()
+                    .filter(Objects::nonNull)
                     .filter(c -> c.getCurrentEnrollments() != null)
                     .mapToInt(Course::getCurrentEnrollments)
                     .sum();
@@ -523,18 +591,20 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
+        normalizeTeacherAssignments(course);
+
         List<TeacherResponseDto> eligibleTeachers = getEligibleTeachersForCourse(courseId);
 
-        if (eligibleTeachers == null || eligibleTeachers.isEmpty()) {
+        if (eligibleTeachers.isEmpty()) {
             log.warn("No eligible teachers found for courseId={}, gradeId={}, subjectId={}",
                     courseId, course.getGradeId(), course.getSubjectId());
             return List.of();
         }
 
         return eligibleTeachers.stream()
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .map(teacher -> {
-                    String displayName = "Expert Instructor";
+                    String displayName = DEFAULT_TEACHER_NAME;
                     String avatar = null;
 
                     try {
@@ -553,31 +623,42 @@ public class CourseService {
                             .name(displayName)
                             .avatar(avatar)
                             .hourlyRate(teacher.getHourlyRate())
-                            .currency(course.getCurrency() != null ? course.getCurrency() : "INR")
+                            .currency(hasText(course.getCurrency()) ? course.getCurrency() : DEFAULT_CURRENCY)
                             .rating(teacher.getAverageRating())
-                            .subjects(teacher.getSubjects() != null ? teacher.getSubjects() : List.of())
+                            .subjects(defaultList(teacher.getSubjects()))
                             .build();
                 })
                 .toList();
     }
 
     private void validateTeacherEligibilityForCourse(Course course, String teacherUserId) {
+        if (!hasText(teacherUserId)) {
+            throw new IllegalArgumentException("Teacher userId is required");
+        }
+
+        normalizeTeacherAssignments(course);
+
+        Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
+        Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
+
         List<TeacherResponseDto> eligibleTeachers = getEligibleTeachersForCourse(course.getId());
 
         boolean isEligible = eligibleTeachers.stream()
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .map(TeacherResponseDto::getUserId)
+                .filter(this::hasText)
                 .anyMatch(teacherUserId::equals);
 
         if (!isEligible) {
-            String gradeLabel = course.getGradeName() != null ? course.getGradeName() : course.getGradeId();
-            String subjectLabel = course.getSubjectName() != null ? course.getSubjectName() : course.getSubjectId();
+            String gradeLabel = grade != null ? grade.getName() : course.getGradeId();
+            String subjectLabel = subject != null ? subject.getName() : course.getSubjectId();
 
             throw new IllegalArgumentException(
                     "Teacher not eligible for this course. Required: " + gradeLabel + " - " + subjectLabel
             );
         }
     }
+
     // =========================
     //      SESSION HELPERS
     // =========================
@@ -608,24 +689,52 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
+        normalizeTeacherAssignments(course);
+
+        if (!hasText(course.getGradeId())) {
+            log.warn("Eligible teacher lookup skipped: missing gradeId for courseId={}", courseId);
+            return List.of();
+        }
+
+        if (!hasText(course.getSubjectId())) {
+            log.warn("Eligible teacher lookup skipped: missing subjectId for courseId={}", courseId);
+            return List.of();
+        }
+
         EligibleTeacherRequest req = EligibleTeacherRequest.builder()
                 .gradeId(course.getGradeId())
                 .subjectId(course.getSubjectId())
-                .topicIds(course.getTopicIds())
+                .topicIds(defaultList(course.getTopicIds()))
                 .build();
 
-        try {                                                          // ✅ ADDED try-catch
-            List<TeacherResponseDto> teachers =
-                    userServiceClient.getEligibleTeachersForCourse(req);
+        log.info("Eligible teacher lookup started for courseId={}, gradeId={}, subjectId={}, topicIds={}",
+                courseId, req.getGradeId(), req.getSubjectId(), req.getTopicIds());
+
+        try {
+            List<TeacherResponseDto> teachers = userServiceClient.getEligibleTeachersForCourse(req);
+
+            log.info("Eligible teacher lookup success for courseId={}, count={}, teacherUserIds={}",
+                    courseId,
+                    teachers != null ? teachers.size() : 0,
+                    teachers != null
+                            ? teachers.stream().filter(Objects::nonNull).map(TeacherResponseDto::getUserId).toList()
+                            : List.of());
+
             return teachers != null ? teachers : List.of();
+
         } catch (FeignException.NotFound ex) {
-            log.warn("⚠️ eligible-for-course 404 for courseId={}: {}", courseId, ex.getMessage());
+            log.warn("Eligible teacher lookup 404 for courseId={}, gradeId={}, subjectId={}, body={}",
+                    courseId, req.getGradeId(), req.getSubjectId(), ex.contentUTF8());
             return List.of();
+
         } catch (FeignException ex) {
-            log.error("❌ Feign error for courseId={}: status={}", courseId, ex.status());
+            log.error("Eligible teacher lookup failed for courseId={}, gradeId={}, subjectId={}, status={}, body={}",
+                    courseId, req.getGradeId(), req.getSubjectId(), ex.status(), ex.contentUTF8(), ex);
             return List.of();
+
         } catch (Exception ex) {
-            log.error("❌ Unexpected error for courseId={}: {}", courseId, ex.getMessage(), ex);
+            log.error("Unexpected eligible teacher lookup failure for courseId={}, gradeId={}, subjectId={}: {}",
+                    courseId, req.getGradeId(), req.getSubjectId(), ex.getMessage(), ex);
             return List.of();
         }
     }
@@ -637,9 +746,14 @@ public class CourseService {
         log.info("Admin {} assigning teacherUserId: {} to courseId: {}",
                 adminId, teacherUserId, courseId);
 
+        if (!hasText(teacherUserId)) {
+            throw new IllegalArgumentException("Teacher userId is required");
+        }
+
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
+        normalizeTeacherAssignments(course);
         validateTeacherEligibilityForCourse(course, teacherUserId);
 
         if (course.getTeacherIds() == null) {
@@ -650,26 +764,20 @@ public class CourseService {
             course.getTeacherIds().add(teacherUserId);
         }
 
-        // maintain primary teacherId as first in list
-        if (course.getTeacherIds().isEmpty()) {
-            course.setTeacherId(null);
-        } else if (course.getTeacherId() == null ||
-                !course.getTeacherIds().contains(course.getTeacherId())) {
-            course.setTeacherId(course.getTeacherIds().get(0));
-        }
+        normalizeTeacherAssignments(course);
 
         course.setUpdatedBy(adminId);
         course.setUpdatedAt(LocalDateTime.now());
 
         Course saved = courseRepository.save(course);
-        log.info("✅ Course {} now has teacherIds: {}", courseId, saved.getTeacherIds());
+        log.info("Course {} now has teacherId={}, teacherIds={}", courseId, saved.getTeacherId(), saved.getTeacherIds());
 
-        Grade grade = course.getGradeId() != null
-                ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
-        Subject subject = course.getSubjectId() != null
-                ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
-        List<Topic> topics = course.getTopicIds() != null
-                ? topicRepository.findAllById(course.getTopicIds()) : List.of();
+        Grade grade = saved.getGradeId() != null
+                ? gradeRepository.findById(saved.getGradeId()).orElse(null) : null;
+        Subject subject = saved.getSubjectId() != null
+                ? subjectRepository.findById(saved.getSubjectId()).orElse(null) : null;
+        List<Topic> topics = saved.getTopicIds() != null
+                ? topicRepository.findAllById(saved.getTopicIds()) : List.of();
 
         return toDtoWithMasterData(saved, grade, subject, topics);
     }
@@ -682,33 +790,36 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
+        normalizeTeacherAssignments(course);
+
         if (course.getTeacherIds() == null || course.getTeacherIds().isEmpty()) {
-            return toDtoWithMasterData(course,
-                    course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null,
-                    course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null,
-                    course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of());
+            Grade grade = course.getGradeId() != null ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
+            Subject subject = course.getSubjectId() != null ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
+            List<Topic> topics = course.getTopicIds() != null ? topicRepository.findAllById(course.getTopicIds()) : List.of();
+            return toDtoWithMasterData(course, grade, subject, topics);
         }
 
-        course.getTeacherIds().removeIf(id -> id.equals(teacherUserId));
+        course.setTeacherIds(course.getTeacherIds().stream()
+                .filter(this::hasText)
+                .filter(id -> !id.equals(teacherUserId))
+                .distinct()
+                .collect(Collectors.toCollection(ArrayList::new)));
 
-        if (course.getTeacherIds().isEmpty()) {
-            course.setTeacherId(null);
-        } else if (teacherUserId.equals(course.getTeacherId())) {
-            course.setTeacherId(course.getTeacherIds().get(0));
-        }
+        normalizeTeacherAssignments(course);
 
         course.setUpdatedBy(adminId);
         course.setUpdatedAt(LocalDateTime.now());
 
         Course saved = courseRepository.save(course);
-        log.info("✅ Course {} now has teacherIds (after unassign): {}", courseId, saved.getTeacherIds());
+        log.info("Course {} now has teacherId={}, teacherIds={} after unassign",
+                courseId, saved.getTeacherId(), saved.getTeacherIds());
 
-        Grade grade = course.getGradeId() != null
-                ? gradeRepository.findById(course.getGradeId()).orElse(null) : null;
-        Subject subject = course.getSubjectId() != null
-                ? subjectRepository.findById(course.getSubjectId()).orElse(null) : null;
-        List<Topic> topics = course.getTopicIds() != null
-                ? topicRepository.findAllById(course.getTopicIds()) : List.of();
+        Grade grade = saved.getGradeId() != null
+                ? gradeRepository.findById(saved.getGradeId()).orElse(null) : null;
+        Subject subject = saved.getSubjectId() != null
+                ? subjectRepository.findById(saved.getSubjectId()).orElse(null) : null;
+        List<Topic> topics = saved.getTopicIds() != null
+                ? topicRepository.findAllById(saved.getTopicIds()) : List.of();
 
         return toDtoWithMasterData(saved, grade, subject, topics);
     }
@@ -716,20 +827,22 @@ public class CourseService {
     public List<AssignedTeacherDto> getAssignedTeachersForCourse(String courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
-        List<String> teacherUserIds = course.getTeacherIds();
 
-        if (teacherUserIds == null || teacherUserIds.isEmpty()) {
+        normalizeTeacherAssignments(course);
+        List<String> teacherUserIds = defaultList(course.getTeacherIds());
+
+        if (teacherUserIds.isEmpty()) {
             log.info("No assigned teachers found for courseId {}", courseId);
             return List.of();
         }
 
         return teacherUserIds.stream()
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(id -> !id.isBlank())
                 .distinct()
                 .map(this::buildAssignedTeacherSafely)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -773,7 +886,7 @@ public class CourseService {
             dto.setSubjects(teacher != null && teacher.getSubjects() != null ? teacher.getSubjects() : List.of());
             dto.setLanguages(teacher != null && teacher.getLanguages() != null ? teacher.getLanguages() : List.of());
             dto.setHourlyRate(teacher != null ? teacher.getHourlyRate() : null);
-            dto.setCurrency("INR");
+            dto.setCurrency(DEFAULT_CURRENCY);
 
             return dto;
         } catch (Exception ex) {
@@ -783,20 +896,20 @@ public class CourseService {
     }
 
     private String buildDisplayName(UserResponseDto user) {
-        if (user == null) return "Expert Instructor";
+        if (user == null) return DEFAULT_TEACHER_NAME;
 
         String firstName = user.getFirstName();
         String lastName = user.getLastName();
 
-        if (firstName != null && lastName != null) {
+        if (hasText(firstName) && hasText(lastName)) {
             return (firstName + " " + lastName).trim();
         }
-        if (firstName != null) return firstName;
-        if (lastName != null) return lastName;
-        if (user.getName() != null && !user.getName().isBlank()) return user.getName();
-        if (user.getEmail() != null) return user.getEmail().split("@")[0];
+        if (hasText(firstName)) return firstName;
+        if (hasText(lastName)) return lastName;
+        if (hasText(user.getName())) return user.getName();
+        if (hasText(user.getEmail())) return user.getEmail().split("@")[0];
 
-        return "Expert Instructor";
+        return DEFAULT_TEACHER_NAME;
     }
 
     // =========================
@@ -807,7 +920,29 @@ public class CourseService {
         return list != null ? list : new ArrayList<>();
     }
 
+    private List<String> cleanStringList(List<String> values) {
+        if (values == null) {
+            return new ArrayList<>();
+        }
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private void validateDatesAndCapacity(CourseCreateRequest request) {
+        if (request.getStartDate() == null) {
+            throw new IllegalArgumentException("Start date is required");
+        }
+        if (request.getEndDate() == null) {
+            throw new IllegalArgumentException("End date is required");
+        }
         if (request.getEndDate().isBefore(request.getStartDate())) {
             throw new IllegalArgumentException("End date must be after start date");
         }
@@ -843,5 +978,74 @@ public class CourseService {
                 log.error("Failed to create session for course {}: {}", courseId, e.getMessage(), e);
             }
         }
+    }
+
+    private void normalizeTeacherAssignments(Course course) {
+        if (course == null) {
+            return;
+        }
+
+        List<String> normalizedTeacherIds = new ArrayList<>();
+
+        if (course.getTeacherIds() != null) {
+            normalizedTeacherIds.addAll(course.getTeacherIds().stream()
+                    .filter(this::hasText)
+                    .map(String::trim)
+                    .distinct()
+                    .toList());
+        }
+
+        if (hasText(course.getTeacherId()) && !normalizedTeacherIds.contains(course.getTeacherId().trim())) {
+            normalizedTeacherIds.add(0, course.getTeacherId().trim());
+        }
+
+        course.setTeacherIds(normalizedTeacherIds);
+
+        if (normalizedTeacherIds.isEmpty()) {
+            course.setTeacherId(null);
+        } else if (!hasText(course.getTeacherId()) || !normalizedTeacherIds.contains(course.getTeacherId().trim())) {
+            course.setTeacherId(normalizedTeacherIds.get(0));
+        }
+    }
+
+    private boolean containsTeacher(Course course, String teacherId) {
+        if (course == null || !hasText(teacherId)) {
+            return false;
+        }
+
+        normalizeTeacherAssignments(course);
+
+        return course.getTeacherIds() != null && course.getTeacherIds().contains(teacherId);
+    }
+
+    private List<String> getTeacherIdsFromCourse(Course course) {
+        if (course == null) {
+            return List.of();
+        }
+
+        normalizeTeacherAssignments(course);
+        return defaultList(course.getTeacherIds()).stream()
+                .filter(this::hasText)
+                .distinct()
+                .toList();
+    }
+
+    private List<Course> mergeDistinctCourses(List<Course> first, List<Course> second) {
+        Set<String> seen = new LinkedHashSet<>();
+        List<Course> result = new ArrayList<>();
+
+        for (Course course : defaultList(first)) {
+            if (course != null && hasText(course.getId()) && seen.add(course.getId())) {
+                result.add(course);
+            }
+        }
+
+        for (Course course : defaultList(second)) {
+            if (course != null && hasText(course.getId()) && seen.add(course.getId())) {
+                result.add(course);
+            }
+        }
+
+        return result;
     }
 }

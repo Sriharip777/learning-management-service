@@ -13,7 +13,7 @@ import java.util.List;
 
 @Repository
 public interface CourseRepository extends MongoRepository<Course, String> {
-
+    List<Course> findByTeacherIdsContaining(String teacherId);
     // Teacher-based queries
     List<Course> findByTeacherId(String teacherId);
 
