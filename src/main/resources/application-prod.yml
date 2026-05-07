@@ -30,6 +30,7 @@ spring:
       fail-on-unknown-properties: false
     time-zone: UTC
 
+
   data:
     mongodb:
       uri: ${MONGODB_URI}
