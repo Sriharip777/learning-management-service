@@ -608,7 +608,20 @@ public class CourseService {
                 .topicIds(course.getTopicIds())
                 .build();
 
-        return userServiceClient.getEligibleTeachersForCourse(req);
+        try {                                                          // ✅ ADDED try-catch
+            List<TeacherResponseDto> teachers =
+                    userServiceClient.getEligibleTeachersForCourse(req);
+            return teachers != null ? teachers : List.of();
+        } catch (FeignException.NotFound ex) {
+            log.warn("⚠️ eligible-for-course 404 for courseId={}: {}", courseId, ex.getMessage());
+            return List.of();
+        } catch (FeignException ex) {
+            log.error("❌ Feign error for courseId={}: status={}", courseId, ex.status());
+            return List.of();
+        } catch (Exception ex) {
+            log.error("❌ Unexpected error for courseId={}: {}", courseId, ex.getMessage(), ex);
+            return List.of();
+        }
     }
 
     // ========= ASSIGN / UNASSIGN MULTIPLE TEACHERS =========
