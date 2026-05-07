@@ -523,55 +523,61 @@ public class CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        String teacherUserId = course.getTeacherId();
-        if (teacherUserId == null) {
+        List<TeacherResponseDto> eligibleTeachers = getEligibleTeachersForCourse(courseId);
+
+        if (eligibleTeachers == null || eligibleTeachers.isEmpty()) {
+            log.warn("No eligible teachers found for courseId={}, gradeId={}, subjectId={}",
+                    courseId, course.getGradeId(), course.getSubjectId());
             return List.of();
         }
 
-        String displayName = "Expert Instructor";
-        String avatar = null;
-        Double hourlyRate = course.getPricePerSession() != null
-                ? course.getPricePerSession().doubleValue() : null;
-        Double rating = null;
-        List<String> subjects = null;
+        return eligibleTeachers.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(teacher -> {
+                    String displayName = "Expert Instructor";
+                    String avatar = null;
 
-        try {
-            UserResponseDto user = userServiceClient.getUserById(teacherUserId);
-            if (user != null) {
-                String name = buildDisplayName(user);
-                if (name != null && !name.isBlank()) {
-                    displayName = name;
-                }
-                avatar = user.getProfilePicture();
-            }
-        } catch (Exception e) {
-            log.warn("Could not fetch user for teacherUserId {}: {}", teacherUserId, e.getMessage());
-        }
+                    try {
+                        UserResponseDto user = userServiceClient.getUserById(teacher.getUserId());
+                        if (user != null) {
+                            displayName = buildDisplayName(user);
+                            avatar = user.getProfilePicture();
+                        }
+                    } catch (Exception e) {
+                        log.warn("Could not fetch user details for eligible teacher {}: {}",
+                                teacher.getUserId(), e.getMessage());
+                    }
 
-        try {
-            TeacherResponseDto teacher = userServiceClient.getTeacherByUserId(teacherUserId);
-            if (teacher != null) {
-                if (teacher.getHourlyRate() != null) hourlyRate = teacher.getHourlyRate();
-                rating = teacher.getAverageRating();
-                subjects = teacher.getSubjects();
-            }
-        } catch (Exception e) {
-            log.warn("Teacher profile not found for userId {}: {}", teacherUserId, e.getMessage());
-        }
-
-        return List.of(
-                AvailableTeacherDto.builder()
-                        .id(teacherUserId)
-                        .name(displayName)
-                        .avatar(avatar)
-                        .hourlyRate(hourlyRate)
-                        .currency(course.getCurrency())
-                        .rating(rating)
-                        .subjects(subjects)
-                        .build()
-        );
+                    return AvailableTeacherDto.builder()
+                            .id(teacher.getUserId())
+                            .name(displayName)
+                            .avatar(avatar)
+                            .hourlyRate(teacher.getHourlyRate())
+                            .currency(course.getCurrency() != null ? course.getCurrency() : "INR")
+                            .rating(teacher.getAverageRating())
+                            .subjects(teacher.getSubjects() != null ? teacher.getSubjects() : List.of())
+                            .build();
+                })
+                .toList();
     }
 
+    private void validateTeacherEligibilityForCourse(Course course, String teacherUserId) {
+        List<TeacherResponseDto> eligibleTeachers = getEligibleTeachersForCourse(course.getId());
+
+        boolean isEligible = eligibleTeachers.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(TeacherResponseDto::getUserId)
+                .anyMatch(teacherUserId::equals);
+
+        if (!isEligible) {
+            String gradeLabel = course.getGradeName() != null ? course.getGradeName() : course.getGradeId();
+            String subjectLabel = course.getSubjectName() != null ? course.getSubjectName() : course.getSubjectId();
+
+            throw new IllegalArgumentException(
+                    "Teacher not eligible for this course. Required: " + gradeLabel + " - " + subjectLabel
+            );
+        }
+    }
     // =========================
     //      SESSION HELPERS
     // =========================
@@ -633,6 +639,8 @@ public class CourseService {
 
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+
+        validateTeacherEligibilityForCourse(course, teacherUserId);
 
         if (course.getTeacherIds() == null) {
             course.setTeacherIds(new ArrayList<>());
@@ -708,7 +716,6 @@ public class CourseService {
     public List<AssignedTeacherDto> getAssignedTeachersForCourse(String courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
-
         List<String> teacherUserIds = course.getTeacherIds();
 
         if (teacherUserIds == null || teacherUserIds.isEmpty()) {
