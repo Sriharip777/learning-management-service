@@ -1,5 +1,3 @@
-// src/main/java/com/tcon/learning_management_service/booking/controller/BookingController.java
-
 package com.tcon.learning_management_service.booking.controller;
 
 import com.tcon.learning_management_service.booking.dto.AvailabilityDto;
@@ -7,6 +5,9 @@ import com.tcon.learning_management_service.booking.dto.BatchBookingRequest;
 import com.tcon.learning_management_service.booking.dto.BookingCancellationRequest;
 import com.tcon.learning_management_service.booking.dto.BookingDto;
 import com.tcon.learning_management_service.booking.dto.BookingRequest;
+import com.tcon.learning_management_service.booking.dto.TeacherAssignStudentsBookingRequest;
+import com.tcon.learning_management_service.booking.dto.TeacherAssignedStudentDto;
+import com.tcon.learning_management_service.booking.dto.TeacherGradeSubjectDto;
 import com.tcon.learning_management_service.booking.service.AvailabilityService;
 import com.tcon.learning_management_service.booking.service.BookingService;
 import com.tcon.learning_management_service.booking.service.CancellationService;
@@ -17,13 +18,11 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.tcon.learning_management_service.booking.dto.TeacherAssignedStudentDto;
-import com.tcon.learning_management_service.booking.dto.TeacherAssignStudentsBookingRequest;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import com.tcon.learning_management_service.booking.dto.*;
 
 @Slf4j
 @RestController
@@ -45,7 +44,6 @@ public class BookingController {
         log.info("📥 POST /api/bookings - Creating booking");
         log.info("🆔 User ID from header: {}", userId);
 
-        // ⭐ DETAILED LOGGING
         log.info("📋 Request object: {}", request);
         log.info("  - teacherId: {}", request.getTeacherId());
         log.info("  - sessionStartTime: {}", request.getSessionStartTime());
@@ -64,9 +62,7 @@ public class BookingController {
 
         } catch (IllegalArgumentException e) {
             log.error("❌ Validation error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", e.getMessage())
-            );
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
             log.error("❌ Unexpected error creating booking", e);
@@ -76,32 +72,15 @@ public class BookingController {
         }
     }
 
-
     // ==================== GET ASSIGNED STUDENTS FOR TEACHER ====================
 
     @GetMapping("/teacher/{teacherId}/assigned-students")
-    public ResponseEntity<?> getAssignedStudentsForTeacher(@PathVariable String teacherId) {
-        log.info("📥 GET /api/bookings/teacher/{}/assigned-students", teacherId);
+    public ResponseEntity<List<TeacherAssignedStudentDto>> getAssignedStudentsForTeacher(
+            @PathVariable String teacherId) {
 
-        try {
-            List<TeacherAssignedStudentDto> students =
-                    bookingService.getAssignedStudentsForTeacher(teacherId);
-
-            log.info("✅ Found {} assigned students for teacher {}", students.size(), teacherId);
-            return ResponseEntity.ok(students);
-
-        } catch (IllegalArgumentException e) {
-            log.error("❌ Validation error fetching assigned students: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", e.getMessage())
-            );
-
-        } catch (Exception e) {
-            log.error("❌ Error fetching assigned students", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                    Map.of("error", "Failed to fetch assigned students: " + e.getMessage())
-            );
-        }
+        List<TeacherAssignedStudentDto> students = bookingService.getAssignedStudentsForTeacher(teacherId);
+        log.info("✅ Found {} assigned students for teacher {}", students.size(), teacherId);
+        return ResponseEntity.ok(students);
     }
 
     // ==================== TEACHER ASSIGN STUDENTS TO SLOT ====================
@@ -116,17 +95,14 @@ public class BookingController {
         log.info("📋 Assign request: {}", request);
 
         try {
-            List<BookingDto> bookings =
-                    bookingService.assignStudentsToTeacherSlot(teacherId, request);
+            List<BookingDto> bookings = bookingService.assignStudentsToTeacherSlot(teacherId, request);
 
             log.info("✅ Assigned {} student bookings successfully", bookings.size());
             return ResponseEntity.status(HttpStatus.CREATED).body(bookings);
 
         } catch (IllegalArgumentException e) {
             log.error("❌ Validation error assigning students: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", e.getMessage())
-            );
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
             log.error("❌ Unexpected error assigning students to teacher slot", e);
@@ -135,7 +111,8 @@ public class BookingController {
             );
         }
     }
-    // ==================== CREATE BATCH BOOKING (NEW) ====================
+
+    // ==================== CREATE BATCH BOOKING ====================
 
     @PostMapping("/batch")
     public ResponseEntity<?> createBatchBooking(
@@ -150,7 +127,6 @@ public class BookingController {
         log.info("💰 Total: {} {}", request.getCurrency(), request.getTotalAmount());
 
         try {
-            // ✅ Creates ONE booking with multiple sessions
             BookingDto booking = bookingService.createBatchBooking(userId, request);
 
             log.info("✅ Multi-session booking created: ID={}, Sessions={}",
@@ -161,9 +137,7 @@ public class BookingController {
 
         } catch (IllegalArgumentException e) {
             log.error("❌ Validation error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", e.getMessage())
-            );
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
             log.error("❌ Unexpected error creating batch booking", e);
@@ -173,7 +147,7 @@ public class BookingController {
         }
     }
 
-    // ==================== CONFIRM BOOKING (AFTER PAYMENT) ====================
+    // ==================== CONFIRM BOOKING ====================
 
     @PostMapping("/{bookingId}/confirm")
     public ResponseEntity<?> confirmBooking(
@@ -284,17 +258,8 @@ public class BookingController {
     // ==================== GET BOOKINGS BY PARENT ====================
 
     @GetMapping("/parent/{parentId}")
-    public ResponseEntity<List<BookingDto>> getParentBookings(
-            @PathVariable String parentId
-            // If you later secure this with auth:
-            // @AuthenticationPrincipal String currentUserId
-    ) {
+    public ResponseEntity<List<BookingDto>> getParentBookings(@PathVariable String parentId) {
         log.info("📥 GET /api/bookings/parent/{}", parentId);
-
-        // If you have Spring Security here and want to restrict:
-        // if (!parentId.equals(currentUserId)) {
-        //     return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        // }
 
         List<BookingDto> bookings = bookingService.getParentBookings(parentId);
         log.info("✅ Found {} bookings for parent {}", bookings.size(), parentId);
@@ -326,7 +291,6 @@ public class BookingController {
             );
         }
     }
-
 
     @PostMapping("/{bookingId}/reject")
     public ResponseEntity<?> rejectBooking(
@@ -407,9 +371,7 @@ public class BookingController {
     }
 
     @GetMapping("/teacher/{teacherId}/grades-subjects")
-    public List<TeacherGradeSubjectDto> getTeacherGradesAndSubjects(
-            @PathVariable String teacherId) {
-
+    public List<TeacherGradeSubjectDto> getTeacherGradesAndSubjects(@PathVariable String teacherId) {
         return bookingService.getTeacherGradeSubjects(teacherId);
     }
 }

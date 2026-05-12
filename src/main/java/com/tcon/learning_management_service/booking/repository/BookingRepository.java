@@ -16,6 +16,13 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
 
     List<Booking> findByStudentId(String studentId);
 
+    boolean existsByStudentIdAndSessionStartTimeLessThanAndSessionEndTimeGreaterThanAndStatusIn(
+            String studentId,
+            LocalDateTime sessionStartTime,
+            LocalDateTime sessionEndTime,
+            List<BookingStatus> statuses
+    );
+
     List<Booking> findByStudentIdAndStatus(String studentId, BookingStatus status);
 
     List<Booking> findByTeacherId(String teacherId);

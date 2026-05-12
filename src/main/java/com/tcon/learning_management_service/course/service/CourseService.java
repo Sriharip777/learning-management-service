@@ -1,5 +1,8 @@
 package com.tcon.learning_management_service.course.service;
 
+import com.tcon.learning_management_service.booking.entity.Booking;
+import com.tcon.learning_management_service.booking.entity.BookingStatus;
+import com.tcon.learning_management_service.booking.repository.BookingRepository;
 import com.tcon.learning_management_service.course.client.UserServiceClient;
 import com.tcon.learning_management_service.course.dto.AssignedTeacherDto;
 import com.tcon.learning_management_service.course.dto.AvailableTeacherDto;
@@ -53,7 +56,7 @@ public class CourseService {
     private final CourseEventPublisher eventPublisher;
     private final UserServiceClient userServiceClient;
     private final ClassSessionService classSessionService;
-
+    private final BookingRepository bookingRepository;
     private final GradeRepository gradeRepository;
     private final SubjectRepository subjectRepository;
     private final TopicRepository topicRepository;
@@ -439,9 +442,9 @@ public class CourseService {
     }
 
     public List<String> getStudentsForTeacher(String teacherId) {
-        if (!hasText(teacherId)) {
-            return List.of();
-        }
+        if (!hasText(teacherId)) return List.of();
+
+        Set<String> studentIds = new LinkedHashSet<>();
 
         List<Course> courses = getCoursesByTeacherId(teacherId);
         List<String> courseIds = courses.stream()
@@ -450,7 +453,6 @@ public class CourseService {
                 .distinct()
                 .toList();
 
-        Set<String> studentIds = new LinkedHashSet<>();
         for (String courseId : courseIds) {
             List<CourseEnrollment> enrollments = enrollmentRepository.findByCourseIdAndStatus(
                     courseId, CourseEnrollment.EnrollmentStatus.ACTIVE);
@@ -459,6 +461,16 @@ public class CourseService {
                     .filter(this::hasText)
                     .toList());
         }
+
+        List<Booking> bookings = bookingRepository.findByTeacherId(teacherId);
+        studentIds.addAll(bookings.stream()
+                .filter(Objects::nonNull)
+                .filter(booking -> booking.getStatus() == BookingStatus.CONFIRMED
+                        || booking.getStatus() == BookingStatus.PENDING
+                        || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                .map(Booking::getStudentId)
+                .filter(this::hasText)
+                .toList());
 
         return studentIds.stream().toList();
     }
