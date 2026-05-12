@@ -525,30 +525,32 @@ public class BookingService {
         }
 
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
-        boolean confirmedImmediately = false;
 
-        if (booking.getAmount() != null && booking.getAmount().compareTo(BigDecimal.ZERO) == 0) {
-            booking.setStatus(BookingStatus.CONFIRMED);
-            booking.setConfirmedAt(now);
-            confirmedImmediately = true;
-            log.info("✅ Fully free booking auto-confirmed after teacher approval: {}", bookingId);
-        } else {
-            booking.setStatus(BookingStatus.PENDING_PAYMENT);
-            log.info("✅ Booking moved to PENDING_PAYMENT after teacher approval: {}", bookingId);
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setConfirmedAt(now);
+
+        if (!hasText(booking.getPaymentId())) {
+            booking.setPaymentId("MVP_BYPASS");
+        }
+
+        if (!hasText(booking.getTransactionId())) {
+            booking.setTransactionId("MVP_BYPASS");
         }
 
         if (hasText(teacherMessage)) {
             String existingNotes = booking.getNotes() != null ? booking.getNotes() : "";
-            booking.setNotes(existingNotes + (existingNotes.isEmpty() ? "" : "\n\n") +
-                    "Teacher's message: " + teacherMessage);
+            booking.setNotes(existingNotes
+                    + (existingNotes.isEmpty() ? "" : "\n\n")
+                    + "Teacher's message: " + teacherMessage.trim());
         }
 
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking approved: {} - Student: {}", bookingId, booking.getStudentName());
+        log.info("✅ Booking directly confirmed after teacher approval (MVP bypass): {} - Student: {}",
+                bookingId, booking.getStudentName());
 
-        if (confirmedImmediately && hasText(updated.getSessionId())) {
+        if (hasText(updated.getSessionId())) {
             createVideoSessionSafe(updated);
         }
 
@@ -929,7 +931,6 @@ public class BookingService {
                 .email(hasText(student.getEmail()) ? student.getEmail().trim() : null)
                 .build();
     }
-
     @Transactional
     public List<BookingDto> assignStudentsToTeacherSlot(
             String teacherHeaderId,
@@ -972,6 +973,7 @@ public class BookingService {
             throw new IllegalArgumentException("Subject is required");
         }
 
+        // Keep this if assigned teacher classes must always be paid.
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be greater than zero");
         }
@@ -1051,7 +1053,6 @@ public class BookingService {
             log.info("🔓 Released slot lock for teacher {}", normalizedTeacherId);
         }
     }
-
     private BookingDto createTeacherAssignedBookingWithoutTeacherOverlapCheck(
             String teacherId,
             TeacherAssignStudentsBookingRequest request,
@@ -1136,9 +1137,12 @@ public class BookingService {
                 .durationMinutes(duration)
                 .sessionStartTime(request.getSessionStartTime())
                 .sessionEndTime(request.getSessionEndTime())
-                .status(BookingStatus.PENDING_PAYMENT)
+                .status(BookingStatus.CONFIRMED)
+                .confirmedAt(now)
                 .amount(request.getAmount())
                 .currency(defaultCurrency(request.getCurrency()))
+                .paymentId("MVP_BYPASS")
+                .transactionId("MVP_BYPASS")
                 .bookedAt(now)
                 .cancellationPolicy(getDefaultCancellationPolicy())
                 .reminderSent(false)
@@ -1155,9 +1159,11 @@ public class BookingService {
         savedSession.setBookingId(savedBooking.getId());
         sessionRepository.save(savedSession);
 
+        createVideoSessionSafe(savedBooking);
+
         eventPublisher.publishBookingCreated(savedBooking);
 
-        log.info("✅ Teacher assigned booking created. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
+        log.info("✅ Teacher assigned booking created and directly confirmed. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
                 savedBooking.getId(),
                 savedSession.getId(),
                 teacherId,
