@@ -22,6 +22,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -41,6 +42,8 @@ public class AvailabilityManagementService {
     private static final int DEFAULT_BUFFER_MINUTES = 15;
     private static final DateTimeFormatter FLEXIBLE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("HH:mm[:ss]");
+    private static final DateTimeFormatter NORMALIZED_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final TeacherAvailabilityRepository availabilityRepository;
     private final DateSpecificAvailabilityRepository dateSpecificRepository;
@@ -94,8 +97,9 @@ public class AvailabilityManagementService {
                 List<TimeSlot> combined = new ArrayList<>(existingSlots);
                 combined.addAll(normalizedIncomingSlots);
 
-                validateNoOverlaps(combined, "weekly availability for " + day);
-                mergedWeeklyAvailability.put(day, combined);
+                List<TimeSlot> finalSlots = deduplicateAndSortSlots(combined);
+                validateNoOverlaps(finalSlots, "weekly availability for " + day);
+                mergedWeeklyAvailability.put(day, finalSlots);
             });
         }
 
@@ -153,25 +157,44 @@ public class AvailabilityManagementService {
             }
 
             LocalDate date = parseDate(dateDto.getDate());
-            List<TimeSlot> normalizedSlots = normalizeSlots(dateDto.getTimeSlots(), "date-specific slots for " + date);
 
-            validateNoOverlaps(normalizedSlots, "date-specific availability for " + date);
+            List<TimeSlot> incomingSlots = normalizeSlots(
+                    dateDto.getTimeSlots(),
+                    "date-specific slots for " + date
+            );
 
-            DateSpecificAvailability entity = DateSpecificAvailability.builder()
+            DateSpecificAvailability existingEntity = dateSpecificRepository
+                    .findByTeacherIdAndDate(request.getTeacherId(), date)
+                    .orElse(null);
+
+            List<TimeSlot> existingSlots = existingEntity != null
+                    ? normalizeSlots(existingEntity.getTimeSlots(), "existing date-specific slots for " + date)
+                    : new ArrayList<>();
+
+            List<TimeSlot> combinedSlots = new ArrayList<>(existingSlots);
+            combinedSlots.addAll(incomingSlots);
+
+            List<TimeSlot> finalSlots = deduplicateAndSortSlots(combinedSlots);
+            validateNoOverlaps(finalSlots, "date-specific availability for " + date);
+
+            DateSpecificAvailability entity = existingEntity != null
+                    ? existingEntity
+                    : DateSpecificAvailability.builder()
                     .teacherId(request.getTeacherId())
                     .date(date)
-                    .timeSlots(normalizedSlots)
-                    .timezone(validatedTimezone)
-                    .bufferTimeMinutes(request.getBufferTimeMinutes() != null
-                            ? request.getBufferTimeMinutes()
-                            : DEFAULT_BUFFER_MINUTES)
                     .build();
 
-            dateSpecificRepository.findByTeacherIdAndDate(request.getTeacherId(), date)
-                    .ifPresent(dateSpecificRepository::delete);
+            entity.setTeacherId(request.getTeacherId());
+            entity.setDate(date);
+            entity.setTimeSlots(finalSlots);
+            entity.setTimezone(validatedTimezone);
+            entity.setBufferTimeMinutes(request.getBufferTimeMinutes() != null
+                    ? request.getBufferTimeMinutes()
+                    : DEFAULT_BUFFER_MINUTES);
 
             dateSpecificRepository.save(entity);
-            log.info("Saved date-specific availability for teacher {} on {}", request.getTeacherId(), date);
+            log.info("Saved date-specific availability for teacher {} on {} with {} slots",
+                    request.getTeacherId(), date, finalSlots.size());
         }
     }
 
@@ -209,9 +232,10 @@ public class AvailabilityManagementService {
         TimeSlot normalizedSlot = validateAndNormalizeSlot(timeSlot, "new time slot for " + dayOfWeek);
         daySlots.add(normalizedSlot);
 
-        validateNoOverlaps(daySlots, "weekly availability for " + dayOfWeek);
+        List<TimeSlot> finalSlots = deduplicateAndSortSlots(daySlots);
+        validateNoOverlaps(finalSlots, "weekly availability for " + dayOfWeek);
 
-        weeklyAvailability.put(dayOfWeek, daySlots);
+        weeklyAvailability.put(dayOfWeek, finalSlots);
         availability.setWeeklyAvailability(weeklyAvailability);
 
         TeacherAvailability saved = availabilityRepository.save(availability);
@@ -252,7 +276,7 @@ public class AvailabilityManagementService {
             if (daySlots.isEmpty()) {
                 weeklyAvailability.remove(dayOfWeek);
             } else {
-                weeklyAvailability.put(dayOfWeek, daySlots);
+                weeklyAvailability.put(dayOfWeek, deduplicateAndSortSlots(daySlots));
             }
         }
 
@@ -281,7 +305,7 @@ public class AvailabilityManagementService {
                 ? teacherAvailability.getTimezone()
                 : DEFAULT_TIMEZONE;
 
-        LocalDate today = LocalDate.now(java.time.ZoneId.of(teacherTimezone));
+        LocalDate today = LocalDate.now(ZoneId.of(teacherTimezone));
         LocalDate futureDate = today.plusMonths(6);
 
         List<DateSpecificAvailability> availabilities = dateSpecificRepository
@@ -310,7 +334,13 @@ public class AvailabilityManagementService {
                             .toList();
 
                     if (!reconciledSlots.isEmpty()) {
-                        result.put(avail.getDate().toString(), reconciledSlots);
+                        String dateKey = avail.getDate().toString();
+
+                        result.merge(dateKey, new ArrayList<>(reconciledSlots), (existing, incoming) -> {
+                            List<TimeSlot> merged = new ArrayList<>(existing);
+                            merged.addAll(incoming);
+                            return deduplicateAndSortSlots(merged);
+                        });
                     }
                 });
 
@@ -418,6 +448,29 @@ public class AvailabilityManagementService {
                 .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
                 .mode(slot.getMode())
                 .build();
+    }
+
+    private List<TimeSlot> deduplicateAndSortSlots(List<TimeSlot> slots) {
+        Map<String, TimeSlot> uniqueSlots = new LinkedHashMap<>();
+
+        for (TimeSlot slot : slots) {
+            if (slot == null) {
+                continue;
+            }
+
+            TimeSlot normalizedSlot = validateAndNormalizeSlot(slot, "slot merge");
+            String uniqueKey = normalizedSlot.getStartTime() + "_" +
+                    normalizedSlot.getEndTime() + "_" +
+                    (normalizedSlot.getMode() != null ? normalizedSlot.getMode().name() : "NULL");
+
+            uniqueSlots.putIfAbsent(uniqueKey, normalizedSlot);
+        }
+
+        List<TimeSlot> finalSlots = new ArrayList<>(uniqueSlots.values());
+        finalSlots.sort(Comparator.comparing(slot ->
+                LocalTime.parse(slot.getStartTime(), FLEXIBLE_TIME_FORMATTER)));
+
+        return finalSlots;
     }
 
     private void validateNoOverlaps(List<TimeSlot> slots, String context) {
@@ -532,7 +585,7 @@ public class AvailabilityManagementService {
     private String normalizeTimeString(String time) {
         try {
             LocalTime parsed = LocalTime.parse(time, FLEXIBLE_TIME_FORMATTER);
-            return parsed.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+            return parsed.format(NORMALIZED_TIME_FORMATTER);
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("Invalid time format: " + time);
         }
