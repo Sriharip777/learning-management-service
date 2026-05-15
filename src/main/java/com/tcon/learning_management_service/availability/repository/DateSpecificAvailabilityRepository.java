@@ -1,27 +1,23 @@
 package com.tcon.learning_management_service.availability.repository;
 
-
 import com.tcon.learning_management_service.availability.entity.DateSpecificAvailability;
 import org.springframework.data.mongodb.repository.MongoRepository;
-import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface DateSpecificAvailabilityRepository extends MongoRepository<DateSpecificAvailability, String> {
-
-    List<DateSpecificAvailability> findByTeacherIdAndDateBetween(
-            String teacherId, LocalDate startDate, LocalDate endDate);
-
-    Optional<DateSpecificAvailability> findByTeacherIdAndDate(String teacherId, LocalDate date);
-
-    void deleteByTeacherIdAndDate(String teacherId, LocalDate date);
-
-    void deleteByTeacherId(String teacherId);
 
     List<DateSpecificAvailability> findByTeacherId(String teacherId);
 
+    List<DateSpecificAvailability> findByTeacherIdAndDayStartUtcBetween(
+            String teacherId, Instant from, Instant to);
 
+    Optional<DateSpecificAvailability> findByTeacherIdAndDayStartUtc(
+            String teacherId, Instant dayStartUtc);
+
+    void deleteByTeacherIdAndDayStartUtc(String teacherId, Instant dayStartUtc);
+
+    void deleteByTeacherId(String teacherId);
 }

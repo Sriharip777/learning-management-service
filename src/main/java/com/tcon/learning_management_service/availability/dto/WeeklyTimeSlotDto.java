@@ -2,15 +2,13 @@ package com.tcon.learning_management_service.availability.dto;
 
 import lombok.*;
 
-import java.time.Instant;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AvailabilitySlotDto {
-    private Instant startTimeUtc;
-    private Instant endTimeUtc;
+public class WeeklyTimeSlotDto {
+    private String startTime;   // "HH:mm[:ss]" local
+    private String endTime;     // "HH:mm[:ss]" local
     private Boolean isAvailable;
     private SessionMode mode;
 }

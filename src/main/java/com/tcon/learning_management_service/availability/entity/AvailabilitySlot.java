@@ -1,5 +1,6 @@
-package com.tcon.learning_management_service.availability.dto;
+package com.tcon.learning_management_service.availability.entity;
 
+import com.tcon.learning_management_service.availability.dto.SessionMode;
 import lombok.*;
 
 import java.time.Instant;
@@ -8,7 +9,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AvailabilitySlotDto {
+public class AvailabilitySlot {
     private Instant startTimeUtc;
     private Instant endTimeUtc;
     private Boolean isAvailable;

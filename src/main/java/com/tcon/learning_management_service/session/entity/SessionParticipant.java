@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Data
@@ -18,8 +19,8 @@ public class SessionParticipant {
     private String studentName;
     private String studentEmail;
     private Boolean attended;
-    private LocalDateTime joinedAt;
-    private LocalDateTime leftAt;
+    private Instant joinedAt;
+    private Instant leftAt;
     private Integer durationMinutes;
     private String feedback;
     private Integer rating;

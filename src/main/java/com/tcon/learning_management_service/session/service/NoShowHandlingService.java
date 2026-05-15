@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -27,10 +27,9 @@ public class NoShowHandlingService {
     public void checkForNoShows() {
         log.info("Checking for no-show sessions");
 
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime threshold = now.minusMinutes(30); // 30 minutes grace period
+        Instant now = Instant.now();
+        Instant threshold = now.minusSeconds(30 * 60L); // 30 minutes grace period
 
-        // Find scheduled sessions that should have started 30 minutes ago
         List<ClassSession> potentialNoShows = sessionRepository
                 .findByStatusAndScheduledStartTimeBefore(ClassStatus.SCHEDULED, threshold);
 

@@ -1,18 +1,16 @@
 package com.tcon.learning_management_service.demo.controller;
 
-
 import com.tcon.learning_management_service.demo.dto.DemoClassDto;
 import com.tcon.learning_management_service.demo.dto.DemoLimitDto;
 import com.tcon.learning_management_service.demo.service.DemoClassService;
 import com.tcon.learning_management_service.demo.service.DemoLimitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -36,7 +34,7 @@ public class DemoClassController {
         String scheduledStartTimeStr = (String) requestData.get("scheduledStartTime");
         String studentNotes = (String) requestData.get("studentNotes");
 
-        LocalDateTime scheduledStartTime = LocalDateTime.parse(scheduledStartTimeStr);
+        Instant scheduledStartTime = Instant.parse(scheduledStartTimeStr);
 
         DemoClassDto demo = demoService.scheduleDemoClass(
                 studentId, studentName, studentEmail, courseId,

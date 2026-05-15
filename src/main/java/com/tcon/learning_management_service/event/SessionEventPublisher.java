@@ -8,17 +8,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Instant;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SessionEventPublisher {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
     private static final String TOPIC = "session-events";
+
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public void publishSessionScheduled(ClassSession session) {
         try {
@@ -28,17 +27,16 @@ public class SessionEventPublisher {
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
                     .scheduledStartTime(session.getScheduledStartTime())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("Published session scheduled event: {}", session.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session scheduled event", e);
+            log.error("Failed to publish session scheduled event: {}", session != null ? session.getId() : null, e);
         }
     }
 
-    // ✅ ADD THIS NEW METHOD
     public void publishSessionCreated(ClassSession session) {
         try {
             SessionEvent event = SessionEvent.builder()
@@ -47,13 +45,13 @@ public class SessionEventPublisher {
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
                     .scheduledStartTime(session.getScheduledStartTime())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
-            log.info("📤 Published SESSION_CREATED event: {}", session.getId());
+            log.info("Published SESSION_CREATED event: {}", session.getId());
         } catch (Exception e) {
-            log.error("❌ Failed to publish session created event", e);
+            log.error("Failed to publish session created event: {}", session != null ? session.getId() : null, e);
         }
     }
 
@@ -64,13 +62,13 @@ public class SessionEventPublisher {
                     .sessionId(session.getId())
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("Published session started event: {}", session.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session started event", e);
+            log.error("Failed to publish session started event: {}", session != null ? session.getId() : null, e);
         }
     }
 
@@ -81,13 +79,13 @@ public class SessionEventPublisher {
                     .sessionId(session.getId())
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("Published session completed event: {}", session.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session completed event", e);
+            log.error("Failed to publish session completed event: {}", session != null ? session.getId() : null, e);
         }
     }
 
@@ -99,13 +97,13 @@ public class SessionEventPublisher {
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
                     .cancellationReason(session.getCancellationReason())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("Published session cancelled event: {}", session.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session cancelled event", e);
+            log.error("Failed to publish session cancelled event: {}", session != null ? session.getId() : null, e);
         }
     }
 
@@ -118,13 +116,16 @@ public class SessionEventPublisher {
                     .courseId(oldSession.getCourseId())
                     .teacherId(oldSession.getTeacherId())
                     .scheduledStartTime(newSession.getScheduledStartTime())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, oldSession.getId(), event);
             log.info("Published session rescheduled event: {} -> {}", oldSession.getId(), newSession.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session rescheduled event", e);
+            log.error("Failed to publish session rescheduled event: {} -> {}",
+                    oldSession != null ? oldSession.getId() : null,
+                    newSession != null ? newSession.getId() : null,
+                    e);
         }
     }
 
@@ -136,13 +137,13 @@ public class SessionEventPublisher {
                     .courseId(session.getCourseId())
                     .teacherId(session.getTeacherId())
                     .scheduledStartTime(session.getScheduledStartTime())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, session.getId(), event);
             log.info("Published session reminder event: {}", session.getId());
         } catch (Exception e) {
-            log.error("Failed to publish session reminder event", e);
+            log.error("Failed to publish session reminder event: {}", session != null ? session.getId() : null, e);
         }
     }
 
@@ -155,13 +156,13 @@ public class SessionEventPublisher {
                     .teacherId(demo.getTeacherId())
                     .studentId(demo.getStudentId())
                     .scheduledStartTime(demo.getScheduledStartTime())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, demo.getId(), event);
             log.info("Published demo class scheduled event: {}", demo.getId());
         } catch (Exception e) {
-            log.error("Failed to publish demo class scheduled event", e);
+            log.error("Failed to publish demo class scheduled event: {}", demo != null ? demo.getId() : null, e);
         }
     }
 
@@ -173,13 +174,13 @@ public class SessionEventPublisher {
                     .courseId(demo.getCourseId())
                     .teacherId(demo.getTeacherId())
                     .studentId(demo.getStudentId())
-                    .timestamp(LocalDateTime.now())
+                    .timestamp(Instant.now())
                     .build();
 
             kafkaTemplate.send(TOPIC, demo.getId(), event);
             log.info("Published demo class completed event: {}", demo.getId());
         } catch (Exception e) {
-            log.error("Failed to publish demo class completed event", e);
+            log.error("Failed to publish demo class completed event: {}", demo != null ? demo.getId() : null, e);
         }
     }
 }

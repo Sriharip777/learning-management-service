@@ -11,7 +11,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -48,11 +48,11 @@ public class BatchBookingRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SessionSlot {
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime sessionStartTime;
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        private Instant sessionStartTime;
 
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime sessionEndTime;
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        private Instant sessionEndTime;
 
         @PositiveOrZero(message = "Amount must be zero or positive")
         private BigDecimal amount;

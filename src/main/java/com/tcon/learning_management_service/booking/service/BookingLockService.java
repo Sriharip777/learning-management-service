@@ -1,13 +1,13 @@
 package com.tcon.learning_management_service.booking.service;
 
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -19,54 +19,63 @@ public class BookingLockService {
     public boolean acquireLock(String resourceId, String userId) {
         cleanupExpiredLocks();
 
-        LockEntry existingLock = locks.get(resourceId);
+        AtomicBoolean acquired = new AtomicBoolean(false);
 
-        if (existingLock != null) {
+        locks.compute(resourceId, (key, existingLock) -> {
+            Instant now = Instant.now();
+
+            if (existingLock == null) {
+                acquired.set(true);
+                log.info("Lock acquired for {} by user {}", resourceId, userId);
+                return new LockEntry(userId, now);
+            }
+
             if (existingLock.getUserId().equals(userId)) {
-                // Same user trying to acquire lock again
-                existingLock.setAcquiredAt(LocalDateTime.now());
-                return true;
+                existingLock.setAcquiredAt(now);
+                acquired.set(true);
+                return existingLock;
             }
 
-            // Lock held by another user
-            if (!isLockExpired(existingLock)) {
-                log.warn("Lock for {} is held by another user: {}", resourceId, existingLock.getUserId());
-                return false;
+            if (isLockExpired(existingLock, now)) {
+                acquired.set(true);
+                log.info("Expired lock replaced for {} by user {}", resourceId, userId);
+                return new LockEntry(userId, now);
             }
 
-            // Lock expired, remove it
-            locks.remove(resourceId);
-        }
+            log.warn("Lock for {} is held by another user: {}", resourceId, existingLock.getUserId());
+            return existingLock;
+        });
 
-        // Acquire new lock
-        LockEntry newLock = new LockEntry(userId, LocalDateTime.now());
-        locks.put(resourceId, newLock);
-        log.info("Lock acquired for {} by user {}", resourceId, userId);
-        return true;
+        return acquired.get();
     }
 
     public void releaseLock(String resourceId, String userId) {
-        LockEntry lock = locks.get(resourceId);
-
-        if (lock != null && lock.getUserId().equals(userId)) {
-            locks.remove(resourceId);
-            log.info("Lock released for {} by user {}", resourceId, userId);
-        }
+        locks.computeIfPresent(resourceId, (key, lock) -> {
+            if (lock.getUserId().equals(userId)) {
+                log.info("Lock released for {} by user {}", resourceId, userId);
+                return null;
+            }
+            return lock;
+        });
     }
 
     private boolean isLockExpired(LockEntry lock) {
-        return Duration.between(lock.getAcquiredAt(), LocalDateTime.now()).compareTo(LOCK_TIMEOUT) > 0;
+        return isLockExpired(lock, Instant.now());
+    }
+
+    private boolean isLockExpired(LockEntry lock, Instant now) {
+        return Duration.between(lock.getAcquiredAt(), now).compareTo(LOCK_TIMEOUT) > 0;
     }
 
     private void cleanupExpiredLocks() {
-        locks.entrySet().removeIf(entry -> isLockExpired(entry.getValue()));
+        Instant now = Instant.now();
+        locks.entrySet().removeIf(entry -> isLockExpired(entry.getValue(), now));
     }
 
     @lombok.Data
     @lombok.AllArgsConstructor
     private static class LockEntry {
         private String userId;
-        private LocalDateTime acquiredAt;
+        private Instant acquiredAt;
     }
 }
-

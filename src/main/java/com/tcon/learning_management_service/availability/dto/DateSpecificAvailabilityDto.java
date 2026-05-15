@@ -1,13 +1,8 @@
 package com.tcon.learning_management_service.availability.dto;
 
+import lombok.*;
 
-import com.tcon.learning_management_service.availability.entity.TimeSlot;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -15,6 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DateSpecificAvailabilityDto {
-    private String date; // "2026-02-15"
-    private List<TimeSlot> timeSlots;
+    // Start of the UTC day this set of slots belongs to (e.g. 2026-05-15T00:00:00Z)
+    private Instant dayStartUtc;
+    private List<AvailabilitySlotDto> slots;
 }

@@ -35,10 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -70,7 +67,7 @@ public class BookingService {
     private final GradeService gradeService;
     private final SubjectService subjectService;
 
-    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final ZoneId DISPLAY_FALLBACK_ZONE = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter DISPLAY_FMT = DateTimeFormatter.ofPattern("MMM d, hh:mm a");
     private static final int MIN_BOOKING_LEAD_MINUTES = 30;
     private static final String DEFAULT_CURRENCY = "INR";
@@ -79,9 +76,9 @@ public class BookingService {
 
     @Transactional
     public BookingDto createBooking(String studentId, BookingRequest request) {
-        log.info("📥 Creating booking for student: {}", studentId);
-        log.info("📋 Request: {}", request);
-        log.info("👤 Student info - Name: {}, Email: {}", request.getStudentName(), request.getStudentEmail());
+        log.info("Creating booking for student: {}", studentId);
+        log.info("Request: {}", request);
+        log.info("Student info - Name: {}, Email: {}", request.getStudentName(), request.getStudentEmail());
 
         validateStudentDetails(request);
 
@@ -124,7 +121,7 @@ public class BookingService {
     }
 
     private BookingDto createBookingForExistingSession(String studentId, BookingRequest request) {
-        log.info("📋 Creating booking for existing session: {}", request.getSessionId());
+        log.info("Creating booking for existing session: {}", request.getSessionId());
 
         ClassSession session = sessionRepository.findById(request.getSessionId())
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + request.getSessionId()));
@@ -161,7 +158,7 @@ public class BookingService {
                     ? BigDecimal.ZERO
                     : resolvePaidSlotAmount(defaultAmount(request.getAmount()));
 
-            LocalDateTime now = LocalDateTime.now(APP_ZONE);
+            Instant now = Instant.now();
 
             Booking booking = Booking.builder()
                     .sessionId(request.getSessionId())
@@ -197,7 +194,7 @@ public class BookingService {
                 demoLimitService.consumeFreeDemos(studentId, freeSlotsApplied);
             }
 
-            log.info("✅ Booking created: ID={}, Student={}, Session={}, isFreeDemo={}, freeSlotsApplied={}, paidSlotsApplied={}, amount={}",
+            log.info("Booking created: ID={}, Student={}, Session={}, isFreeDemo={}, freeSlotsApplied={}, paidSlotsApplied={}, amount={}",
                     saved.getId(), saved.getStudentName(), saved.getSessionId(), saved.getIsFreeDemo(),
                     saved.getFreeSlotsApplied(), saved.getPaidSlotsApplied(), saved.getAmount());
 
@@ -210,22 +207,13 @@ public class BookingService {
     }
 
     private BookingDto createDirectTeacherBooking(String studentId, BookingRequest request) {
-        log.info("🎯 Creating direct one-on-one booking for teacher: {}", request.getTeacherId());
-        log.info("📅 Time: {} to {}", request.getSessionStartTime(), request.getSessionEndTime());
+        log.info("Creating direct one-on-one booking for teacher: {}", request.getTeacherId());
+        log.info("Time: {} to {}", request.getSessionStartTime(), request.getSessionEndTime());
 
         validateDirectBookingRequest(request);
 
-        ZoneId userZone = ZoneId.of("Asia/Kolkata");
-
-        LocalDateTime startUtc = request.getSessionStartTime()
-                .atZone(userZone)
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .toLocalDateTime();
-
-        LocalDateTime endUtc = request.getSessionEndTime()
-                .atZone(userZone)
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .toLocalDateTime();
+        Instant startUtc = request.getSessionStartTime();
+        Instant endUtc = request.getSessionEndTime();
 
         String lockKey = buildTeacherSlotLockKey(
                 request.getTeacherId(),
@@ -241,7 +229,7 @@ public class BookingService {
             ensureNoTeacherOverlap(request.getTeacherId(), startUtc, endUtc);
 
             int duration = resolveDurationMinutes(startUtc, endUtc);
-            log.info("📏 Calculated duration: {} minutes", duration);
+            log.info("Calculated duration: {} minutes", duration);
 
             ClassSession session = ClassSession.builder()
                     .sessionType(SessionType.ONE_ON_ONE)
@@ -253,8 +241,8 @@ public class BookingService {
                     .title(hasText(request.getSubject()) ? request.getSubject() : "One-on-One Class")
                     .description("Direct booking with " + request.getStudentName())
                     .status(ClassStatus.SCHEDULED)
-                    .scheduledStartTime(request.getSessionStartTime())
-                    .scheduledEndTime(request.getSessionEndTime())
+                    .scheduledStartTime(startUtc)
+                    .scheduledEndTime(endUtc)
                     .durationMinutes(duration)
                     .maxParticipants(1)
                     .participants(new ArrayList<>())
@@ -265,7 +253,7 @@ public class BookingService {
                     .build();
 
             ClassSession savedSession = sessionRepository.save(session);
-            log.info("✅ ClassSession created: {} (Type: ONE_ON_ONE)", savedSession.getId());
+            log.info("ClassSession created: {} (Type: ONE_ON_ONE)", savedSession.getId());
 
             int freeSlotsApplied = getFreeSlotsToApply(studentId, 1);
             boolean isFreeDemo = freeSlotsApplied == 1;
@@ -274,7 +262,7 @@ public class BookingService {
                     ? BigDecimal.ZERO
                     : resolvePaidSlotAmount(defaultAmount(request.getAmount()));
 
-            LocalDateTime now = LocalDateTime.now(APP_ZONE);
+            Instant now = Instant.now();
 
             Booking booking = Booking.builder()
                     .sessionId(savedSession.getId())
@@ -288,8 +276,8 @@ public class BookingService {
                     .parentId(request.getParentId())
                     .subject(request.getSubject())
                     .durationMinutes(duration)
-                    .sessionStartTime(request.getSessionStartTime())
-                    .sessionEndTime(request.getSessionEndTime())
+                    .sessionStartTime(startUtc)
+                    .sessionEndTime(endUtc)
                     .status(BookingStatus.PENDING)
                     .amount(finalAmount)
                     .currency(defaultCurrency(request.getCurrency()))
@@ -313,18 +301,18 @@ public class BookingService {
             savedSession.setBookingId(saved.getId());
             sessionRepository.save(savedSession);
 
-            log.info("💾 Booking created successfully:");
-            log.info("   📋 Booking ID: {}", saved.getId());
-            log.info("   🎓 Session ID: {}", saved.getSessionId());
-            log.info("   👤 Student: {} ({})", saved.getStudentName(), saved.getStudentEmail());
-            log.info("   👨‍🏫 Teacher: {}", saved.getTeacherId());
-            log.info("   📚 Subject: {}", saved.getSubject());
-            log.info("   ⏱️ Duration: {} minutes", saved.getDurationMinutes());
-            log.info("   📅 Time: {} to {}", saved.getSessionStartTime(), saved.getSessionEndTime());
-            log.info("   🎁 isFreeDemo: {}", saved.getIsFreeDemo());
-            log.info("   🆓 freeSlotsApplied: {}", saved.getFreeSlotsApplied());
-            log.info("   💰 paidSlotsApplied: {}", saved.getPaidSlotsApplied());
-            log.info("   💵 amount: {}", saved.getAmount());
+            log.info("Booking created successfully");
+            log.info("Booking ID: {}", saved.getId());
+            log.info("Session ID: {}", saved.getSessionId());
+            log.info("Student: {} ({})", saved.getStudentName(), saved.getStudentEmail());
+            log.info("Teacher: {}", saved.getTeacherId());
+            log.info("Subject: {}", saved.getSubject());
+            log.info("Duration: {} minutes", saved.getDurationMinutes());
+            log.info("Time: {} to {}", saved.getSessionStartTime(), saved.getSessionEndTime());
+            log.info("isFreeDemo: {}", saved.getIsFreeDemo());
+            log.info("freeSlotsApplied: {}", saved.getFreeSlotsApplied());
+            log.info("paidSlotsApplied: {}", saved.getPaidSlotsApplied());
+            log.info("amount: {}", saved.getAmount());
 
             eventPublisher.publishBookingCreated(saved);
             return toDto(saved);
@@ -335,7 +323,7 @@ public class BookingService {
     }
 
     public List<TeacherGradeSubjectDto> getTeacherGradeSubjects(String teacherId) {
-        log.info("🔥 API HIT: getTeacherGradeSubjects for teacherId={}", teacherId);
+        log.info("API HIT: getTeacherGradeSubjects for teacherId={}", teacherId);
 
         List<Course> courses = courseService.getCoursesByTeacherId(teacherId);
         Map<String, Set<String>> map = new HashMap<>();
@@ -375,11 +363,11 @@ public class BookingService {
 
     @Transactional
     public BookingDto createBatchBooking(String studentId, BatchBookingRequest request) {
-        log.info("📦 Creating multi-session booking for student: {}", studentId);
-        log.info("  - Student: {} ({})", request.getStudentName(), request.getStudentEmail());
-        log.info("  - Teacher: {}", request.getTeacherId());
-        log.info("  - Sessions: {}", request.getSessions().size());
-        log.info("  - Requested total amount: {} {}", request.getCurrency(), request.getTotalAmount());
+        log.info("Creating multi-session booking for student: {}", studentId);
+        log.info("Student: {} ({})", request.getStudentName(), request.getStudentEmail());
+        log.info("Teacher: {}", request.getTeacherId());
+        log.info("Sessions: {}", request.getSessions().size());
+        log.info("Requested total amount: {} {}", request.getCurrency(), request.getTotalAmount());
 
         if (!hasText(request.getStudentName())) {
             throw new IllegalArgumentException("Student name is required");
@@ -424,7 +412,7 @@ public class BookingService {
                     .build());
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         Booking booking = Booking.builder()
                 .studentId(studentId)
@@ -454,7 +442,7 @@ public class BookingService {
             demoLimitService.consumeFreeDemos(studentId, freeSlotsApplied);
         }
 
-        log.info("✅ Multi-session booking created: ID={}, Sessions={}, freeSlotsApplied={}, paidSlotsApplied={}, Total={} {}",
+        log.info("Multi-session booking created: ID={}, Sessions={}, freeSlotsApplied={}, paidSlotsApplied={}, Total={} {}",
                 savedBooking.getId(), sessionTimes.size(), freeSlotsApplied, paidSlotsApplied,
                 savedBooking.getCurrency(), recalculatedTotal);
 
@@ -464,7 +452,7 @@ public class BookingService {
 
     @Transactional
     public BookingDto confirmBooking(String bookingId, String paymentId, String transactionId) {
-        log.info("💳 Confirming booking: {}", bookingId);
+        log.info("Confirming booking: {}", bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
@@ -478,7 +466,7 @@ public class BookingService {
             throw new IllegalArgumentException("Only pending bookings can be confirmed");
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setPaymentId(paymentId);
@@ -487,7 +475,7 @@ public class BookingService {
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking confirmed: {}", bookingId);
+        log.info("Booking confirmed: {}", bookingId);
 
         createVideoSessionSafe(updated);
         eventPublisher.publishBookingConfirmed(updated);
@@ -496,35 +484,35 @@ public class BookingService {
 
     @Transactional
     public BookingDto approveBooking(String bookingId, String teacherId, String teacherMessage) {
-        log.info("👍 Teacher {} approving booking {}", teacherId, bookingId);
+        log.info("Teacher {} approving booking {}", teacherId, bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> {
-                    log.warn("❌ Booking not found for approve: {}", bookingId);
+                    log.warn("Booking not found for approve: {}", bookingId);
                     return new IllegalArgumentException("Booking not found: " + bookingId);
                 });
 
         if (!Objects.equals(booking.getTeacherId(), teacherId)) {
-            log.warn("❌ Unauthorized approve attempt. bookingId={}, bookingTeacherId={}, headerTeacherId={}",
+            log.warn("Unauthorized approve attempt. bookingId={}, bookingTeacherId={}, headerTeacherId={}",
                     bookingId, booking.getTeacherId(), teacherId);
             throw new IllegalArgumentException("Unauthorized: Teacher does not own this booking");
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            log.warn("❌ Invalid status for approve. bookingId={}, status={}", bookingId, booking.getStatus());
+            log.warn("Invalid status for approve. bookingId={}, status={}", bookingId, booking.getStatus());
             throw new IllegalArgumentException("Only pending bookings can be approved");
         }
 
         if (!hasText(booking.getSessionId())) {
             if (booking.getSessions() == null || booking.getSessions().isEmpty()) {
-                log.error("❌ Cannot approve booking without sessionId or sessions. bookingId={}", bookingId);
+                log.error("Cannot approve booking without sessionId or sessions. bookingId={}", bookingId);
                 throw new IllegalStateException("Cannot approve booking without linked session or sessions");
             }
-            log.warn("⚠️ Approving booking without single sessionId (multi-session booking). bookingId={}, sessions={}",
+            log.warn("Approving booking without single sessionId (multi-session booking). bookingId={}, sessions={}",
                     bookingId, booking.getSessions().size());
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setConfirmedAt(now);
@@ -547,7 +535,7 @@ public class BookingService {
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking directly confirmed after teacher approval (MVP bypass): {} - Student: {}",
+        log.info("Booking directly confirmed after teacher approval (MVP bypass): {} - Student: {}",
                 bookingId, booking.getStudentName());
 
         if (hasText(updated.getSessionId())) {
@@ -556,9 +544,9 @@ public class BookingService {
 
         try {
             eventPublisher.publishBookingApproved(updated);
-            log.info("📤 BOOKING_APPROVED event published for booking {}", bookingId);
+            log.info("BOOKING_APPROVED event published for booking {}", bookingId);
         } catch (Exception e) {
-            log.error("❌ Failed to publish BOOKING_APPROVED event for booking {}: {}",
+            log.error("Failed to publish BOOKING_APPROVED event for booking {}: {}",
                     bookingId, e.getMessage(), e);
         }
 
@@ -567,7 +555,7 @@ public class BookingService {
 
     @Transactional
     public BookingDto rejectBooking(String bookingId, String teacherId, String rejectionReason) {
-        log.info("👎 Teacher {} rejecting booking {}", teacherId, bookingId);
+        log.info("Teacher {} rejecting booking {}", teacherId, bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
@@ -580,7 +568,7 @@ public class BookingService {
             throw new IllegalArgumentException("Only pending bookings can be rejected");
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(BookingStatus.REJECTED);
         booking.setCancellationReason(rejectionReason);
@@ -589,14 +577,14 @@ public class BookingService {
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking rejected: {} - Reason: {}", bookingId, rejectionReason);
+        log.info("Booking rejected: {} - Reason: {}", bookingId, rejectionReason);
 
         eventPublisher.publishBookingRejected(updated);
         return toDto(updated);
     }
 
     public BookingDto getBooking(String bookingId) {
-        log.info("📋 Getting booking: {}", bookingId);
+        log.info("Getting booking: {}", bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
@@ -605,10 +593,10 @@ public class BookingService {
     }
 
     public List<BookingDto> getStudentBookings(String studentId) {
-        log.info("📋 Getting bookings for student: {}", studentId);
+        log.info("Getting bookings for student: {}", studentId);
 
         List<Booking> bookings = bookingRepository.findByStudentId(studentId);
-        log.info("✅ Found {} bookings for student", bookings.size());
+        log.info("Found {} bookings for student", bookings.size());
 
         return bookings.stream()
                 .map(this::toDtoWithVideoSession)
@@ -616,10 +604,10 @@ public class BookingService {
     }
 
     public List<BookingDto> getTeacherBookings(String teacherId) {
-        log.info("📋 Getting bookings for teacher: {}", teacherId);
+        log.info("Getting bookings for teacher: {}", teacherId);
 
         List<Booking> bookings = bookingRepository.findByTeacherId(teacherId);
-        log.info("✅ Found {} bookings for teacher", bookings.size());
+        log.info("Found {} bookings for teacher", bookings.size());
 
         String timezoneId = getTeacherTimezone(teacherId);
 
@@ -630,7 +618,7 @@ public class BookingService {
     }
 
     public List<BookingDto> getSessionBookings(String sessionId) {
-        log.info("📋 Getting bookings for session: {}", sessionId);
+        log.info("Getting bookings for session: {}", sessionId);
 
         return bookingRepository.findBySessionId(sessionId).stream()
                 .map(this::toDtoWithVideoSession)
@@ -638,10 +626,10 @@ public class BookingService {
     }
 
     public List<BookingDto> getStudentUpcomingBookings(String studentId) {
-        log.info("📋 Getting upcoming bookings for student: {}", studentId);
+        log.info("Getting upcoming bookings for student: {}", studentId);
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
-        return bookingRepository.findByStudentIdAndSessionStartTimeBetween(studentId, now, now.plusMonths(1))
+        Instant now = Instant.now();
+        return bookingRepository.findByStudentIdAndSessionStartTimeBetween(studentId, now, now.plus(Duration.ofDays(30)))
                 .stream()
                 .map(this::toDtoWithVideoSession)
                 .filter(b -> b.getStatus() == BookingStatus.CONFIRMED)
@@ -649,10 +637,10 @@ public class BookingService {
     }
 
     public List<BookingDto> getParentBookings(String parentId) {
-        log.info("📋 Getting bookings for parent: {}", parentId);
+        log.info("Getting bookings for parent: {}", parentId);
 
         List<Booking> bookings = bookingRepository.findByParentId(parentId);
-        log.info("✅ Found {} bookings for parent {}", bookings.size(), parentId);
+        log.info("Found {} bookings for parent {}", bookings.size(), parentId);
 
         return bookings.stream()
                 .map(this::toDtoWithVideoSession)
@@ -660,15 +648,15 @@ public class BookingService {
     }
 
     public List<BookingDto> getTeacherPendingRequests(String teacherId) {
-        log.info("📋 Getting pending requests for teacher: {}", teacherId);
+        log.info("Getting pending requests for teacher: {}", teacherId);
 
         List<Booking> pending = bookingRepository.findByTeacherIdAndStatus(teacherId, BookingStatus.PENDING);
-        log.info("✅ Found {} pending requests for teacher", pending.size());
+        log.info("Found {} pending requests for teacher", pending.size());
 
         pending.forEach(booking -> {
             int sessionCount = (booking.getSessions() != null && !booking.getSessions().isEmpty())
                     ? booking.getSessions().size() : 1;
-            log.info("  📌 Pending: ID={}, Student={}, Email={}, Sessions={}, Amount={}",
+            log.info("Pending: ID={}, Student={}, Email={}, Sessions={}, Amount={}",
                     booking.getId(),
                     booking.getStudentName(),
                     booking.getStudentEmail(),
@@ -686,7 +674,7 @@ public class BookingService {
 
     @Transactional
     public BookingDto completeBooking(String bookingId) {
-        log.info("✅ Completing booking: {}", bookingId);
+        log.info("Completing booking: {}", bookingId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
@@ -695,21 +683,21 @@ public class BookingService {
             throw new IllegalArgumentException("Only confirmed bookings can be completed");
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(BookingStatus.COMPLETED);
         booking.setCompletedAt(now);
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking completed: {}", bookingId);
+        log.info("Booking completed: {}", bookingId);
 
         return toDto(updated);
     }
 
     @Transactional
     public BookingDto cancelBooking(String bookingId, String userId, String reason) {
-        log.info("❌ Cancelling booking: {} by user: {}", bookingId, userId);
+        log.info("Cancelling booking: {} by user: {}", bookingId, userId);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
@@ -727,7 +715,7 @@ public class BookingService {
             throw new IllegalArgumentException("Cannot cancel booking in current status");
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setCancellationReason(reasonOrDefault(reason));
@@ -736,13 +724,13 @@ public class BookingService {
         booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("✅ Booking cancelled: {}", bookingId);
+        log.info("Booking cancelled: {}", bookingId);
 
         return toDto(updated);
     }
 
-    private void validateBookingTime(LocalDateTime startTime) {
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+    private void validateBookingTime(Instant startTime) {
+        Instant now = Instant.now();
 
         if (startTime == null) {
             throw new IllegalArgumentException("Session start time is required");
@@ -752,10 +740,9 @@ public class BookingService {
             throw new IllegalArgumentException("Cannot book in the past");
         }
 
-        if (startTime.toLocalDate().equals(now.toLocalDate()) &&
-                startTime.isBefore(now.plusMinutes(MIN_BOOKING_LEAD_MINUTES))) {
+        if (startTime.isBefore(now.plus(Duration.ofMinutes(MIN_BOOKING_LEAD_MINUTES)))) {
             throw new IllegalArgumentException(
-                    "Same-day booking requires at least " + MIN_BOOKING_LEAD_MINUTES + " minutes advance"
+                    "Booking requires at least " + MIN_BOOKING_LEAD_MINUTES + " minutes advance"
             );
         }
     }
@@ -771,7 +758,7 @@ public class BookingService {
         validateBookingTime(request.getSessionStartTime());
     }
 
-    private void validateSessionRange(LocalDateTime start, LocalDateTime end) {
+    private void validateSessionRange(Instant start, Instant end) {
         if (start == null) {
             throw new IllegalArgumentException("Session start time is required");
         }
@@ -792,7 +779,7 @@ public class BookingService {
         }
     }
 
-    private int resolveDurationMinutes(LocalDateTime start, LocalDateTime end) {
+    private int resolveDurationMinutes(Instant start, Instant end) {
         return Math.toIntExact(Duration.between(start, end).toMinutes());
     }
 
@@ -805,8 +792,8 @@ public class BookingService {
     }
 
     private void ensureNoTeacherOverlap(String teacherId,
-                                        LocalDateTime requestedStart,
-                                        LocalDateTime requestedEnd) {
+                                        Instant requestedStart,
+                                        Instant requestedEnd) {
 
         List<ClassSession> overlappingSessions =
                 sessionRepository.findOverlappingSessions(
@@ -820,15 +807,12 @@ public class BookingService {
         }
     }
 
-    private String buildTeacherSlotLockKey(String teacherId, LocalDateTime start, LocalDateTime end) {
+    private String buildTeacherSlotLockKey(String teacherId, Instant start, Instant end) {
         return "teacher-slot:" + teacherId + ":" + start + ":" + end;
     }
 
     private String getTeacherTimezone(String teacherId) {
-        return teacherAvailabilityRepository.findByTeacherId(teacherId)
-                .map(TeacherAvailability::getTimezone)
-                .filter(this::hasText)
-                .orElse(APP_ZONE.getId());
+        return "UTC";
     }
 
     @Transactional(readOnly = true)
@@ -841,17 +825,17 @@ public class BookingService {
 
         List<TeacherAssignedStudentDto> fromUserService = fetchAssignedStudentsFromUserService(normalizedTeacherId);
         if (!fromUserService.isEmpty()) {
-            log.info("✅ Found {} assigned students from user service for teacherId={}",
+            log.info("Found {} assigned students from user service for teacherId={}",
                     fromUserService.size(), normalizedTeacherId);
             return fromUserService;
         }
 
-        log.info("🔍 Falling back to bookings for assigned students, teacherId={}", normalizedTeacherId);
+        log.info("Falling back to bookings for assigned students, teacherId={}", normalizedTeacherId);
 
         List<Booking> teacherBookings = bookingRepository.findByTeacherId(normalizedTeacherId);
 
         if (teacherBookings == null || teacherBookings.isEmpty()) {
-            log.info("ℹ️ No bookings found for teacherId={}", normalizedTeacherId);
+            log.info("No bookings found for teacherId={}", normalizedTeacherId);
             return List.of();
         }
 
@@ -884,7 +868,7 @@ public class BookingService {
 
         List<TeacherAssignedStudentDto> result = new ArrayList<>(studentMap.values());
 
-        log.info("✅ Found {} assigned students for teacherId={}", result.size(), normalizedTeacherId);
+        log.info("Found {} assigned students for teacherId={}", result.size(), normalizedTeacherId);
 
         return result;
     }
@@ -898,7 +882,7 @@ public class BookingService {
             List<AssignedStudentOptionDto> students = userServiceClient.getAssignedStudentsForTeacher(teacherId.trim());
 
             if (students == null || students.isEmpty()) {
-                log.warn("⚠️ userServiceClient.getAssignedStudentsForTeacher returned empty for teacherId={}", teacherId);
+                log.warn("userServiceClient.getAssignedStudentsForTeacher returned empty for teacherId={}", teacherId);
                 return List.of();
             }
 
@@ -909,7 +893,7 @@ public class BookingService {
                     .toList();
 
         } catch (Exception ex) {
-            log.error("❌ Failed to fetch assigned students for teacherId={} error={}", teacherId, ex.getMessage(), ex);
+            log.error("Failed to fetch assigned students for teacherId={} error={}", teacherId, ex.getMessage(), ex);
             return List.of();
         }
     }
@@ -931,26 +915,27 @@ public class BookingService {
                 .email(hasText(student.getEmail()) ? student.getEmail().trim() : null)
                 .build();
     }
+
     @Transactional
     public List<BookingDto> assignStudentsToTeacherSlot(
             String teacherHeaderId,
             TeacherAssignStudentsBookingRequest request
     ) {
-        log.info("📌 assignStudentsToTeacherSlot started");
-        log.info("  - header teacher id: {}", teacherHeaderId);
-        log.info("  - request teacher id: {}", request != null ? request.getTeacherId() : null);
-        log.info("  - request student ids: {}", request != null ? request.getStudentUserIds() : null);
-        log.info("  - request subject: {}", request != null ? request.getSubject() : null);
-        log.info("  - request amount: {}", request != null ? request.getAmount() : null);
-        log.info("  - request start: {}", request != null ? request.getSessionStartTime() : null);
-        log.info("  - request end: {}", request != null ? request.getSessionEndTime() : null);
+        log.info("assignStudentsToTeacherSlot started");
+        log.info("header teacher id: {}", teacherHeaderId);
+        log.info("request teacher id: {}", request != null ? request.getTeacherId() : null);
+        log.info("request student ids: {}", request != null ? request.getStudentUserIds() : null);
+        log.info("request subject: {}", request != null ? request.getSubject() : null);
+        log.info("request amount: {}", request != null ? request.getAmount() : null);
+        log.info("request start: {}", request != null ? request.getSessionStartTime() : null);
+        log.info("request end: {}", request != null ? request.getSessionEndTime() : null);
 
         if (request == null) {
             throw new IllegalArgumentException("Request must not be null");
         }
 
         String normalizedTeacherId = normalizeTeacherId(teacherHeaderId, request.getTeacherId());
-        log.info("✅ normalizedTeacherId={}", normalizedTeacherId);
+        log.info("normalizedTeacherId={}", normalizedTeacherId);
 
         if (request.getStudentUserIds() == null || request.getStudentUserIds().isEmpty()) {
             throw new IllegalArgumentException("At least one student must be selected");
@@ -963,7 +948,7 @@ public class BookingService {
                 .distinct()
                 .toList();
 
-        log.info("✅ normalizedStudentUserIds={}", normalizedStudentUserIds);
+        log.info("normalizedStudentUserIds={}", normalizedStudentUserIds);
 
         if (normalizedStudentUserIds.isEmpty()) {
             throw new IllegalArgumentException("At least one valid student must be selected");
@@ -973,7 +958,6 @@ public class BookingService {
             throw new IllegalArgumentException("Subject is required");
         }
 
-        // Keep this if assigned teacher classes must always be paid.
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be greater than zero");
         }
@@ -982,7 +966,7 @@ public class BookingService {
         validateBookingTime(request.getSessionStartTime());
 
         List<TeacherAssignedStudentDto> assignedStudents = getAssignedStudentsForTeacher(normalizedTeacherId);
-        log.info("✅ assignedStudents count={} data={}", assignedStudents.size(), assignedStudents);
+        log.info("assignedStudents count={} data={}", assignedStudents.size(), assignedStudents);
 
         Map<String, TeacherAssignedStudentDto> assignedStudentMap = assignedStudents.stream()
                 .filter(Objects::nonNull)
@@ -994,14 +978,14 @@ public class BookingService {
                         LinkedHashMap::new
                 ));
 
-        log.info("✅ assignedStudentMap keys={}", assignedStudentMap.keySet());
+        log.info("assignedStudentMap keys={}", assignedStudentMap.keySet());
 
         List<String> unassignedStudentIds = normalizedStudentUserIds.stream()
                 .filter(studentUserId -> !assignedStudentMap.containsKey(studentUserId))
                 .toList();
 
         if (!unassignedStudentIds.isEmpty()) {
-            log.error("❌ Students {} are not assigned to teacher {}", unassignedStudentIds, normalizedTeacherId);
+            log.error("Students {} are not assigned to teacher {}", unassignedStudentIds, normalizedTeacherId);
             throw new IllegalArgumentException("Selected students are not assigned to this teacher: " + unassignedStudentIds);
         }
 
@@ -1011,7 +995,7 @@ public class BookingService {
                 request.getSessionEndTime()
         );
 
-        log.info("🔒 slotLockKey={}", slotLockKey);
+        log.info("slotLockKey={}", slotLockKey);
 
         if (!lockService.acquireLock(slotLockKey, normalizedTeacherId)) {
             throw new IllegalArgumentException("Selected teacher slot is currently being processed");
@@ -1045,14 +1029,15 @@ public class BookingService {
                 bookings.add(bookingDto);
             }
 
-            log.info("✅ Created {} bookings for teacher {}", bookings.size(), normalizedTeacherId);
+            log.info("Created {} bookings for teacher {}", bookings.size(), normalizedTeacherId);
             return bookings;
 
         } finally {
             lockService.releaseLock(slotLockKey, normalizedTeacherId);
-            log.info("🔓 Released slot lock for teacher {}", normalizedTeacherId);
+            log.info("Released slot lock for teacher {}", normalizedTeacherId);
         }
     }
+
     private BookingDto createTeacherAssignedBookingWithoutTeacherOverlapCheck(
             String teacherId,
             TeacherAssignStudentsBookingRequest request,
@@ -1085,7 +1070,7 @@ public class BookingService {
                 );
 
         if (existingBooking.isPresent()) {
-            log.warn("⚠️ Assigned booking already exists for teacherId={}, studentId={}, slot={} to {}",
+            log.warn("Assigned booking already exists for teacherId={}, studentId={}, slot={} to {}",
                     teacherId,
                     studentUserId,
                     request.getSessionStartTime(),
@@ -1122,7 +1107,7 @@ public class BookingService {
 
         ClassSession savedSession = sessionRepository.save(session);
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         Booking booking = Booking.builder()
                 .sessionId(savedSession.getId())
@@ -1163,7 +1148,7 @@ public class BookingService {
 
         eventPublisher.publishBookingCreated(savedBooking);
 
-        log.info("✅ Teacher assigned booking created and directly confirmed. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
+        log.info("Teacher assigned booking created and directly confirmed. bookingId={}, sessionId={}, teacherId={}, studentId={}, status={}",
                 savedBooking.getId(),
                 savedSession.getId(),
                 teacherId,
@@ -1175,8 +1160,8 @@ public class BookingService {
 
     private void ensureNoTeacherOverlapForManualAssignment(
             String teacherId,
-            LocalDateTime requestedStart,
-            LocalDateTime requestedEnd,
+            Instant requestedStart,
+            Instant requestedEnd,
             List<String> requestedStudentUserIds
     ) {
         List<ClassSession> overlappingSessions =
@@ -1219,7 +1204,7 @@ public class BookingService {
     }
 
     private BookingDto applyDisplayTimezone(BookingDto dto, String timezoneId) {
-        String safeTimezoneId = hasText(timezoneId) ? timezoneId : APP_ZONE.getId();
+        String safeTimezoneId = hasText(timezoneId) ? timezoneId : DISPLAY_FALLBACK_ZONE.getId();
         ZoneId teacherZone = ZoneId.of(safeTimezoneId);
 
         if (dto.getSessionStartTime() != null) {
@@ -1323,7 +1308,7 @@ public class BookingService {
                 dto.setVideoSession(videoSession);
             }
         } catch (Exception e) {
-            log.warn("⚠️ Could not fetch video session for booking {}: {}", booking.getId(), e.getMessage());
+            log.warn("Could not fetch video session for booking {}: {}", booking.getId(), e.getMessage());
         }
 
         return dto;
@@ -1352,7 +1337,7 @@ public class BookingService {
             return booking;
         }
 
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        Instant now = Instant.now();
 
         booking.setStatus(targetStatus);
         booking.setUpdatedAt(now);
@@ -1366,7 +1351,7 @@ public class BookingService {
         }
 
         Booking saved = bookingRepository.save(booking);
-        log.info("✅ Synced booking {} status from video session: {}", saved.getId(), targetStatus);
+        log.info("Synced booking {} status from video session: {}", saved.getId(), targetStatus);
 
         return saved;
     }
@@ -1384,7 +1369,6 @@ public class BookingService {
                 return null;
         }
     }
-
     private void createVideoSessionSafe(Booking booking) {
         try {
             if (booking == null) {
@@ -1427,6 +1411,16 @@ public class BookingService {
                 return;
             }
 
+            LocalDateTime scheduledStartTime = LocalDateTime.ofInstant(
+                    booking.getSessionStartTime(),
+                    ZoneOffset.UTC
+            );
+
+            LocalDateTime scheduledEndTime = LocalDateTime.ofInstant(
+                    booking.getSessionEndTime(),
+                    ZoneOffset.UTC
+            );
+
             VideoSessionCreateRequest videoRequest = VideoSessionCreateRequest.builder()
                     .bookingId(booking.getId())
                     .classSessionId(booking.getSessionId())
@@ -1434,8 +1428,8 @@ public class BookingService {
                     .studentId(booking.getStudentId())
                     .parentId(booking.getParentId())
                     .subject(hasText(booking.getSubject()) ? booking.getSubject() : "One-on-One Class")
-                    .scheduledStartTime(booking.getSessionStartTime())
-                    .scheduledEndTime(booking.getSessionEndTime())
+                    .scheduledStartTime(scheduledStartTime)
+                    .scheduledEndTime(scheduledEndTime)
                     .durationMinutes(booking.getDurationMinutes())
                     .channelName("booking-" + booking.getId())
                     .recordingEnabled(true)
@@ -1443,30 +1437,30 @@ public class BookingService {
                     .chatEnabled(true)
                     .build();
 
-            log.info("📹 Creating video session for booking: {}, classSessionId: {}, teacherId: {}, studentId: {}, startTime: {}, endTime: {}, durationMinutes: {}",
+            log.info("Creating video session for booking: {}, classSessionId: {}, teacherId: {}, studentId: {}, startTime: {}, endTime: {}, durationMinutes: {}",
                     booking.getId(),
                     booking.getSessionId(),
                     booking.getTeacherId(),
                     booking.getStudentId(),
-                    booking.getSessionStartTime(),
-                    booking.getSessionEndTime(),
+                    scheduledStartTime,
+                    scheduledEndTime,
                     booking.getDurationMinutes());
 
             VideoSessionCreateResponse response = videoServiceClient.createVideoSession(videoRequest);
 
             if (response == null) {
-                log.error("❌ Video service returned null response for booking {}", booking.getId());
+                log.error("Video service returned null response for booking {}", booking.getId());
                 return;
             }
 
-            log.info("✅ Video session created successfully. bookingId={}, videoSessionId={}, channelName={}, canJoin={}",
+            log.info("Video session created successfully. bookingId={}, videoSessionId={}, channelName={}, canJoin={}",
                     booking.getId(),
                     response.getId(),
                     response.getChannelName(),
                     response.getCanJoin());
 
         } catch (Exception e) {
-            log.error("❌ Failed to create video session for booking {}: {}",
+            log.error("Failed to create video session for booking {}: {}",
                     booking != null ? booking.getId() : null, e.getMessage(), e);
         }
     }

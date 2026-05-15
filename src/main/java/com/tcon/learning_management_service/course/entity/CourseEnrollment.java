@@ -12,7 +12,7 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -36,9 +36,9 @@ public class CourseEnrollment {
 
     private EnrollmentStatus status;
 
-    private LocalDateTime enrolledAt;
-    private LocalDateTime completedAt;
-    private LocalDateTime cancelledAt;
+    private Instant enrolledAt;
+    private Instant completedAt;
+    private Instant cancelledAt;
 
     private BigDecimal amountPaid;
     private String paymentId;
@@ -49,10 +49,10 @@ public class CourseEnrollment {
     private Double progressPercentage;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     private String sessionMode;
 

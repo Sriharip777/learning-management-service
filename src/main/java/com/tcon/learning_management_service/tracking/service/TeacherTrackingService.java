@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -42,7 +42,7 @@ public class TeacherTrackingService {
     private final WorksheetAttemptRepository worksheetAttemptRepository;
 
     public TeacherTrackingResponseDto getTeacherTracking(String teacherId) {
-        log.info("📊 Building teacher tracking dashboard for teacherId={}", teacherId);
+        log.info("Building teacher tracking dashboard for teacherId={}", teacherId);
 
         List<BookingDto> teacherBookings = bookingService.getTeacherBookings(teacherId);
         List<SessionDto> teacherSessions = classSessionService.getTeacherSessions(teacherId);
@@ -235,7 +235,7 @@ public class TeacherTrackingService {
 
         int classesRemaining = (int) studentSessions.stream()
                 .filter(session -> session.getScheduledStartTime() != null)
-                .filter(session -> session.getScheduledStartTime().isAfter(LocalDateTime.now()))
+                .filter(session -> session.getScheduledStartTime().isAfter(Instant.now()))
                 .count();
 
         String status = resolveStatus(attendancePercent, homeworkCompleted, totalHomework, worksheetAverage);
@@ -285,7 +285,7 @@ public class TeacherTrackingService {
 
         teacherSessions.stream()
                 .filter(session -> session.getScheduledStartTime() != null)
-                .filter(session -> session.getScheduledStartTime().isAfter(LocalDateTime.now()))
+                .filter(session -> session.getScheduledStartTime().isAfter(Instant.now()))
                 .filter(session -> session.getStatus() == ClassStatus.SCHEDULED || session.getStatus() == ClassStatus.IN_PROGRESS)
                 .sorted(Comparator.comparing(SessionDto::getScheduledStartTime))
                 .limit(10)

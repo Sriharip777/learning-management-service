@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -28,22 +28,19 @@ public class ClassReminderScheduler {
     public void sendSessionReminders() {
         log.info("Checking for sessions needing reminders");
 
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime reminderWindow = now.plusHours(1); // Send reminder 1 hour before
+        Instant now = Instant.now();
+        Instant reminderWindow = now.plusSeconds(60 * 60L); // Send reminder 1 hour before
 
-        // Find sessions that need reminders
         List<ClassSession> sessionsNeedingReminders = sessionRepository
                 .findSessionsNeedingReminders(now, reminderWindow);
 
         int remindersSent = 0;
         for (ClassSession session : sessionsNeedingReminders) {
             try {
-                // Publish reminder event
                 eventPublisher.publishSessionReminder(session);
 
-                // Mark reminder as sent
                 session.setReminderSent(true);
-                session.setReminderSentAt(LocalDateTime.now());
+                session.setReminderSentAt(Instant.now());
                 sessionRepository.save(session);
 
                 remindersSent++;

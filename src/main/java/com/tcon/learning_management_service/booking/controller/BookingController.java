@@ -20,7 +20,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -33,8 +35,6 @@ public class BookingController {
     private final BookingService bookingService;
     private final CancellationService cancellationService;
     private final AvailabilityService availabilityService;
-
-    // ==================== CREATE BOOKING ====================
 
     @PostMapping
     public ResponseEntity<?> createBooking(
@@ -72,8 +72,6 @@ public class BookingController {
         }
     }
 
-    // ==================== GET ASSIGNED STUDENTS FOR TEACHER ====================
-
     @GetMapping("/teacher/{teacherId}/assigned-students")
     public ResponseEntity<List<TeacherAssignedStudentDto>> getAssignedStudentsForTeacher(
             @PathVariable String teacherId) {
@@ -82,8 +80,6 @@ public class BookingController {
         log.info("✅ Found {} assigned students for teacher {}", students.size(), teacherId);
         return ResponseEntity.ok(students);
     }
-
-    // ==================== TEACHER ASSIGN STUDENTS TO SLOT ====================
 
     @PostMapping("/teacher/assign-students")
     public ResponseEntity<?> assignStudentsToTeacherSlot(
@@ -111,8 +107,6 @@ public class BookingController {
             );
         }
     }
-
-    // ==================== CREATE BATCH BOOKING ====================
 
     @PostMapping("/batch")
     public ResponseEntity<?> createBatchBooking(
@@ -147,8 +141,6 @@ public class BookingController {
         }
     }
 
-    // ==================== CONFIRM BOOKING ====================
-
     @PostMapping("/{bookingId}/confirm")
     public ResponseEntity<?> confirmBooking(
             @PathVariable String bookingId,
@@ -167,6 +159,10 @@ public class BookingController {
 
             return ResponseEntity.ok(booking);
 
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error confirming booking: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+
         } catch (Exception e) {
             log.error("❌ Error confirming booking", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
@@ -174,8 +170,6 @@ public class BookingController {
             );
         }
     }
-
-    // ==================== GET BOOKING BY ID ====================
 
     @GetMapping("/{bookingId}")
     public ResponseEntity<?> getBooking(@PathVariable String bookingId) {
@@ -199,8 +193,6 @@ public class BookingController {
         }
     }
 
-    // ==================== GET BOOKINGS BY STUDENT ====================
-
     @GetMapping("/student/{studentId}")
     public ResponseEntity<List<BookingDto>> getStudentBookings(@PathVariable String studentId) {
         log.info("📥 GET /api/bookings/student/{}", studentId);
@@ -220,8 +212,6 @@ public class BookingController {
 
         return ResponseEntity.ok(bookings);
     }
-
-    // ==================== GET BOOKINGS BY TEACHER ====================
 
     @GetMapping("/teacher/{teacherId}")
     public ResponseEntity<List<BookingDto>> getTeacherBookings(@PathVariable String teacherId) {
@@ -243,8 +233,6 @@ public class BookingController {
         return ResponseEntity.ok(requests);
     }
 
-    // ==================== GET BOOKINGS BY SESSION ====================
-
     @GetMapping("/session/{sessionId}")
     public ResponseEntity<List<BookingDto>> getSessionBookings(@PathVariable String sessionId) {
         log.info("📥 GET /api/bookings/session/{}", sessionId);
@@ -255,8 +243,6 @@ public class BookingController {
         return ResponseEntity.ok(bookings);
     }
 
-    // ==================== GET BOOKINGS BY PARENT ====================
-
     @GetMapping("/parent/{parentId}")
     public ResponseEntity<List<BookingDto>> getParentBookings(@PathVariable String parentId) {
         log.info("📥 GET /api/bookings/parent/{}", parentId);
@@ -266,8 +252,6 @@ public class BookingController {
 
         return ResponseEntity.ok(bookings);
     }
-
-    // ==================== TEACHER APPROVE/REJECT ====================
 
     @PostMapping("/{bookingId}/approve")
     public ResponseEntity<?> approveBooking(
@@ -283,6 +267,10 @@ public class BookingController {
 
             log.info("✅ Booking approved: {}", bookingId);
             return ResponseEntity.ok(booking);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error approving booking: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
             log.error("❌ Error approving booking", e);
@@ -307,6 +295,10 @@ public class BookingController {
             log.info("✅ Booking rejected: {}", bookingId);
             return ResponseEntity.ok(booking);
 
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error rejecting booking: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+
         } catch (Exception e) {
             log.error("❌ Error rejecting booking", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
@@ -314,8 +306,6 @@ public class BookingController {
             );
         }
     }
-
-    // ==================== CANCEL BOOKING ====================
 
     @PostMapping("/{bookingId}/cancel")
     public ResponseEntity<?> cancelBooking(
@@ -336,6 +326,10 @@ public class BookingController {
                     "refundAmount", refundAmount
             ));
 
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error cancelling booking: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+
         } catch (Exception e) {
             log.error("❌ Error cancelling booking", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
@@ -344,8 +338,6 @@ public class BookingController {
         }
     }
 
-    // ==================== GET TEACHER AVAILABILITY ====================
-
     @GetMapping("/availability/teacher/{teacherId}")
     public ResponseEntity<?> getTeacherAvailability(
             @PathVariable String teacherId,
@@ -353,14 +345,21 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
 
         log.info("📥 GET /api/bookings/availability/teacher/{}", teacherId);
-        log.info("Date range: {} to {}", start, end);
+        log.info("Local date range from UI: {} to {}", start, end);
 
         try {
-            List<AvailabilityDto> availability = availabilityService.getTeacherAvailability(teacherId, start, end);
+            Instant startUtc = start.toInstant(ZoneOffset.UTC);
+            Instant endUtc = end.toInstant(ZoneOffset.UTC);
+
+            List<AvailabilityDto> availability = availabilityService.getTeacherAvailability(teacherId, startUtc, endUtc);
 
             log.info("✅ Found {} availability slots for teacher {}", availability.size(), teacherId);
 
             return ResponseEntity.ok(availability);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Validation error fetching availability: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
             log.error("❌ Error fetching availability", e);
@@ -371,7 +370,8 @@ public class BookingController {
     }
 
     @GetMapping("/teacher/{teacherId}/grades-subjects")
-    public List<TeacherGradeSubjectDto> getTeacherGradesAndSubjects(@PathVariable String teacherId) {
-        return bookingService.getTeacherGradeSubjects(teacherId);
+    public ResponseEntity<List<TeacherGradeSubjectDto>> getTeacherGradesAndSubjects(@PathVariable String teacherId) {
+        List<TeacherGradeSubjectDto> result = bookingService.getTeacherGradeSubjects(teacherId);
+        return ResponseEntity.ok(result);
     }
 }

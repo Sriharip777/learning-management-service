@@ -31,7 +31,6 @@ public class CourseSearchService {
         Query query = new Query();
         List<Criteria> criteriaList = new ArrayList<>();
 
-        // Keyword search (title or description)
         if (searchDto.getKeyword() != null && !searchDto.getKeyword().isEmpty()) {
             Criteria keywordCriteria = new Criteria().orOperator(
                     Criteria.where("title").regex(searchDto.getKeyword(), "i"),
@@ -40,45 +39,36 @@ public class CourseSearchService {
             criteriaList.add(keywordCriteria);
         }
 
-        // Grade filter (replaces old category)
         if (searchDto.getGradeId() != null && !searchDto.getGradeId().isEmpty()) {
             criteriaList.add(Criteria.where("gradeId").is(searchDto.getGradeId()));
         }
 
-        // Subject filter
         if (searchDto.getSubjectId() != null && !searchDto.getSubjectId().isEmpty()) {
             criteriaList.add(Criteria.where("subjectId").is(searchDto.getSubjectId()));
         }
 
-        // Topic filter
         if (searchDto.getTopicIds() != null && !searchDto.getTopicIds().isEmpty()) {
             criteriaList.add(Criteria.where("topicIds").in(searchDto.getTopicIds()));
         }
 
-        // Teacher filter
         if (searchDto.getTeacherId() != null && !searchDto.getTeacherId().isEmpty()) {
             criteriaList.add(Criteria.where("teacherId").is(searchDto.getTeacherId()));
         }
 
-        // Status filter
         if (searchDto.getStatuses() != null && !searchDto.getStatuses().isEmpty()) {
             criteriaList.add(Criteria.where("status").in(searchDto.getStatuses()));
         } else {
-            // Default: only show published courses
             criteriaList.add(Criteria.where("status").is(CourseStatus.PUBLISHED));
         }
 
-        // Grade level filter
         if (searchDto.getGradeLevel() != null && !searchDto.getGradeLevel().isEmpty()) {
             criteriaList.add(Criteria.where("gradeLevel").is(searchDto.getGradeLevel()));
         }
 
-        // Difficulty filter
         if (searchDto.getDifficulty() != null && !searchDto.getDifficulty().isEmpty()) {
             criteriaList.add(Criteria.where("difficulty").is(searchDto.getDifficulty()));
         }
 
-        // Price range filter
         if (searchDto.getMinPrice() != null) {
             criteriaList.add(Criteria.where("pricePerSession").gte(searchDto.getMinPrice()));
         }
@@ -86,28 +76,23 @@ public class CourseSearchService {
             criteriaList.add(Criteria.where("pricePerSession").lte(searchDto.getMaxPrice()));
         }
 
-        // Rating filter
         if (searchDto.getMinRating() != null) {
             criteriaList.add(Criteria.where("rating").gte(searchDto.getMinRating()));
         }
 
-        // Demo availability filter
         if (searchDto.getIsDemoAvailable() != null) {
             criteriaList.add(Criteria.where("isDemoAvailable").is(searchDto.getIsDemoAvailable()));
         }
 
-        // Combine all criteria
         if (!criteriaList.isEmpty()) {
             query.addCriteria(new Criteria().andOperator(criteriaList.toArray(new Criteria[0])));
         }
 
-        // Sorting
         Sort.Direction direction = "ASC".equalsIgnoreCase(searchDto.getSortDirection())
                 ? Sort.Direction.ASC
                 : Sort.Direction.DESC;
         query.with(Sort.by(direction, searchDto.getSortBy()));
 
-        // Pagination
         Pageable pageable = PageRequest.of(searchDto.getPage(), searchDto.getSize());
         query.with(pageable);
 

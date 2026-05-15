@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -19,6 +19,6 @@ public class CourseSession {
 
     private List<String> topics;
 
-    private LocalDateTime scheduledStartTime;
+    private Instant scheduledStartTime;
     private Integer durationMinutes;
 }

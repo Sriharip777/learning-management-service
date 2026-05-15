@@ -14,7 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -64,8 +64,8 @@ public class ClassSessionController {
     @GetMapping("/teacher/{teacherId}/range")
     public ResponseEntity<List<SessionDto>> getTeacherSessionsInRange(
             @PathVariable String teacherId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant start,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end) {
         List<SessionDto> sessions = sessionService.getTeacherSessionsInDateRange(teacherId, start, end);
         return ResponseEntity.ok(sessions);
     }

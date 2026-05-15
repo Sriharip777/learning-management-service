@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -36,11 +36,11 @@ public class BookingDto {
 
     private VideoSessionCreateResponse videoSession;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime sessionStartTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant sessionStartTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime sessionEndTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant sessionEndTime;
 
     private List<SessionTimeDto> sessions;
 
@@ -49,17 +49,17 @@ public class BookingDto {
     private String paymentId;
     private String transactionId;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime bookedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant bookedAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime confirmedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant confirmedAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime cancelledAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant cancelledAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime completedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant completedAt;
 
     private String cancellationReason;
     private String cancelledBy;
@@ -67,17 +67,17 @@ public class BookingDto {
     private BigDecimal refundAmount;
     private String refundTransactionId;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime refundedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant refundedAt;
 
     private Boolean reminderSent;
     private String notes;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant createdAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime updatedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant updatedAt;
 
     private String displaySessionStartTime;
     private String displaySessionEndTime;
@@ -92,11 +92,11 @@ public class BookingDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SessionTimeDto {
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime startTime;
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        private Instant startTime;
 
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime endTime;
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        private Instant endTime;
 
         private BigDecimal amount;
     }

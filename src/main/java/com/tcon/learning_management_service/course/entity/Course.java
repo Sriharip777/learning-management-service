@@ -11,8 +11,8 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,16 +26,13 @@ public class Course {
     @Id
     private String id;
 
-    // Keep if you still map a teacher for that course
     @Indexed
-
     private String teacherId;
     private List<String> teacherIds;
 
     private String title;
     private String description;
 
-    // NEW: master data mapping
     @Indexed
     private String gradeId;
     private String gradeName;
@@ -93,10 +90,10 @@ public class Course {
     private Integer totalReviews = 0;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     private String createdBy;
     private String updatedBy;

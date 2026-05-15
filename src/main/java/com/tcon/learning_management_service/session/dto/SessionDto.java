@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -26,17 +27,7 @@ public class SessionDto {
     private SessionType sessionType;
     private ClassStatus status;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledStartTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledEndTime;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime actualStartTime;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime actualEndTime;
 
     private Integer durationMinutes;
     private String meetingUrl;
@@ -52,20 +43,17 @@ public class SessionDto {
     private String rescheduledToId;
     private String rescheduleReason;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime rescheduledAt;
-
     private String cancellationReason;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime cancelledAt;
 
     private String cancelledBy;
     private Boolean reminderSent;
+    private Instant scheduledStartTime;
+    private Instant scheduledEndTime;
+    private Instant actualStartTime;
+    private Instant actualEndTime;
+    private Instant rescheduledAt;
+    private Instant cancelledAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime createdAt;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime updatedAt;
 }

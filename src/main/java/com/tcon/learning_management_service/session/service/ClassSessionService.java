@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -55,7 +55,6 @@ public class ClassSessionService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duration must be greater than zero");
         }
 
-        // Validate course exists and teacher owns it
         Course course = courseRepository.findById(request.getCourseId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
@@ -69,14 +68,12 @@ public class ClassSessionService {
             );
         }
 
-        // Calculate end time
-        LocalDateTime scheduledEndTime = request.getScheduledStartTime()
-                .plusMinutes(request.getDurationMinutes());
+        Instant scheduledEndTime = request.getScheduledStartTime()
+                .plusSeconds((long) request.getDurationMinutes() * 60);
 
-        // Check for conflicts
         List<ClassSession> conflicts = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
                 teacherId,
-                request.getScheduledStartTime().minusMinutes(request.getDurationMinutes()),
+                request.getScheduledStartTime().minusSeconds((long) request.getDurationMinutes() * 60),
                 scheduledEndTime
         );
 
@@ -90,7 +87,7 @@ public class ClassSessionService {
         ClassSession session = ClassSession.builder()
                 .courseId(request.getCourseId())
                 .teacherId(teacherId)
-                .teacherName(course.getTitle()) // Should get from teacher service
+                .teacherName(course.getTitle())
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .sessionType(request.getSessionType())
@@ -101,12 +98,14 @@ public class ClassSessionService {
                 .meetingUrl(request.getMeetingUrl())
                 .meetingId(request.getMeetingId())
                 .meetingPassword(request.getMeetingPassword())
-                .maxParticipants(request.getMaxParticipants() != null ?
-                        request.getMaxParticipants() : course.getMaxStudents())
+                .maxParticipants(request.getMaxParticipants() != null
+                        ? request.getMaxParticipants()
+                        : course.getMaxStudents())
                 .participants(new ArrayList<>())
                 .attendedCount(0)
-                .materialUrls(request.getMaterialUrls() != null ?
-                        request.getMaterialUrls() : new ArrayList<>())
+                .materialUrls(request.getMaterialUrls() != null
+                        ? request.getMaterialUrls()
+                        : new ArrayList<>())
                 .notes(request.getNotes())
                 .reminderSent(false)
                 .createdBy(teacherId)
@@ -115,7 +114,6 @@ public class ClassSessionService {
         ClassSession saved = sessionRepository.save(session);
         log.info("Session scheduled successfully: {}", saved.getId());
 
-        // Publish event
         eventPublisher.publishSessionScheduled(saved);
 
         return toDto(saved);
@@ -173,7 +171,7 @@ public class ClassSessionService {
     }
 
     public List<SessionDto> getTeacherSessionsInDateRange(
-            String teacherId, LocalDateTime start, LocalDateTime end) {
+            String teacherId, Instant start, Instant end) {
         log.info("Fetching sessions for teacher {} from {} to {}", teacherId, start, end);
 
         if (teacherId == null || teacherId.isBlank()) {
@@ -227,12 +225,11 @@ public class ClassSessionService {
         }
 
         session.setStatus(ClassStatus.IN_PROGRESS);
-        session.setActualStartTime(LocalDateTime.now());
+        session.setActualStartTime(Instant.now());
 
         ClassSession updated = sessionRepository.save(session);
         log.info("Session started: {}", sessionId);
 
-        // Publish event
         eventPublisher.publishSessionStarted(updated);
 
         return toDto(updated);
@@ -271,7 +268,7 @@ public class ClassSessionService {
         }
 
         session.setStatus(ClassStatus.COMPLETED);
-        session.setActualEndTime(LocalDateTime.now());
+        session.setActualEndTime(Instant.now());
         if (notes != null && !notes.isBlank()) {
             session.setNotes(notes);
         }
@@ -279,7 +276,6 @@ public class ClassSessionService {
         ClassSession updated = sessionRepository.save(session);
         log.info("Session completed: {}", sessionId);
 
-        // Publish event
         eventPublisher.publishSessionCompleted(updated);
 
         return toDto(updated);
@@ -319,13 +315,12 @@ public class ClassSessionService {
 
         session.setStatus(ClassStatus.CANCELLED);
         session.setCancellationReason(reason);
-        session.setCancelledAt(LocalDateTime.now());
+        session.setCancelledAt(Instant.now());
         session.setCancelledBy(teacherId);
 
         ClassSession updated = sessionRepository.save(session);
         log.info("Session cancelled: {}", sessionId);
 
-        // Publish event
         eventPublisher.publishSessionCancelled(updated);
 
         return toDto(updated);
@@ -354,7 +349,6 @@ public class ClassSessionService {
             session.setParticipants(new ArrayList<>());
         }
 
-        // Find or create participant
         SessionParticipant participant = session.getParticipants().stream()
                 .filter(p -> studentId.equals(p.getStudentId()))
                 .findFirst()
@@ -366,14 +360,12 @@ public class ClassSessionService {
 
         participant.setAttended(attended);
         if (attended) {
-            participant.setJoinedAt(LocalDateTime.now());
+            participant.setJoinedAt(Instant.now());
         }
 
-        // Update or add participant
         session.getParticipants().removeIf(p -> studentId.equals(p.getStudentId()));
         session.getParticipants().add(participant);
 
-        // Update attended count
         long attendedCount = session.getParticipants().stream()
                 .filter(p -> Boolean.TRUE.equals(p.getAttended()))
                 .count();

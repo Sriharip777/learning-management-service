@@ -10,7 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,26 +108,27 @@ public class InternalBookingAnalyticsService {
 
     public List<MonthlyClassStatDto> getOverviewStats() {
         List<Booking> bookings = bookingRepository.findAll();
-        Map<String, Integer> grouped = new LinkedHashMap<>();
+        Map<YearMonth, Integer> grouped = new LinkedHashMap<>();
 
-        YearMonth now = YearMonth.now();
+        YearMonth now = YearMonth.now(ZoneOffset.UTC);
         for (int i = 5; i >= 0; i--) {
             YearMonth ym = now.minusMonths(i);
-            grouped.put(monthLabel(ym.getMonthValue()), 0);
+            grouped.put(ym, 0);
         }
 
         for (Booking booking : bookings) {
-            if (booking.getSessionStartTime() != null) {
-                String label = monthLabel(booking.getSessionStartTime().getMonthValue());
-                if (grouped.containsKey(label)) {
-                    grouped.put(label, grouped.get(label) + 1);
+            Instant sessionStartTime = booking.getSessionStartTime();
+            if (sessionStartTime != null) {
+                YearMonth bookingMonth = YearMonth.from(sessionStartTime.atZone(ZoneOffset.UTC));
+                if (grouped.containsKey(bookingMonth)) {
+                    grouped.put(bookingMonth, grouped.get(bookingMonth) + 1);
                 }
             }
         }
 
         return grouped.entrySet().stream()
                 .map(e -> MonthlyClassStatDto.builder()
-                        .label(e.getKey())
+                        .label(monthLabel(e.getKey().getMonthValue()))
                         .classes(e.getValue())
                         .build())
                 .collect(Collectors.toList());

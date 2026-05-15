@@ -16,7 +16,6 @@ import java.util.List;
 public class CourseSearchDto {
     private String keyword;
 
-    // NEW: replaces category/tags
     private String gradeId;
     private String subjectId;
     private List<String> topicIds;

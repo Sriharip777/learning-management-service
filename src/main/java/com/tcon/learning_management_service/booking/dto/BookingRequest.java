@@ -11,7 +11,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -25,11 +25,11 @@ public class BookingRequest {
     private String teacherId;
     private String teacherName;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime sessionStartTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant sessionStartTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime sessionEndTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant sessionEndTime;
 
     @NotBlank(message = "Student name is required")
     private String studentName;
@@ -53,6 +53,6 @@ public class BookingRequest {
 
     @AssertTrue(message = "Amount must be zero or positive")
     public boolean isAmountValid() {
-        return amount != null && amount.compareTo(BigDecimal.ZERO) >= 0;
+        return amount == null || amount.compareTo(BigDecimal.ZERO) >= 0;
     }
 }

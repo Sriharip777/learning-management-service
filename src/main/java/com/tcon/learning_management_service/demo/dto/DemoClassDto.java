@@ -7,7 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -24,17 +24,17 @@ public class DemoClassDto {
     private String courseName;
     private DemoClass.DemoStatus status;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledStartTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant scheduledStartTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledEndTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant scheduledEndTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime actualStartTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant actualStartTime;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime actualEndTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant actualEndTime;
 
     private Integer durationMinutes;
     private String meetingUrl;
@@ -48,9 +48,9 @@ public class DemoClassDto {
     private String enrollmentId;
     private Boolean reminderSent;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant createdAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime updatedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant updatedAt;
 }

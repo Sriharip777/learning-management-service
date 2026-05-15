@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -16,5 +16,5 @@ public class UpcomingClassDto {
     private String studentId;
     private String student;
     private String subject;
-    private LocalDateTime scheduledStartTime;
+    private Instant scheduledStartTime;
 }

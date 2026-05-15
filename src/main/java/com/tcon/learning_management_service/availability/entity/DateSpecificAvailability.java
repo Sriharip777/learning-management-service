@@ -1,18 +1,13 @@
 package com.tcon.learning_management_service.availability.entity;
 
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +16,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "date_specific_availability")
-@CompoundIndex(name = "teacher_date_idx", def = "{'teacherId': 1, 'date': 1}", unique = true)
+@CompoundIndex(name = "teacher_day_idx", def = "{'teacherId': 1, 'dayStartUtc': 1}", unique = true)
 public class DateSpecificAvailability {
 
     @Id
@@ -29,18 +24,17 @@ public class DateSpecificAvailability {
 
     private String teacherId;
 
-    private LocalDate date; // Specific date (e.g., 2026-02-15)
+    // Start of the UTC day for this availability group (e.g. 2026-05-15T00:00:00Z)
+    private Instant dayStartUtc;
 
     @Builder.Default
-    private List<TimeSlot> timeSlots = new ArrayList<>();
-
-    private String timezone;
+    private List<AvailabilitySlot> slots = new ArrayList<>();
 
     private Integer bufferTimeMinutes;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 }

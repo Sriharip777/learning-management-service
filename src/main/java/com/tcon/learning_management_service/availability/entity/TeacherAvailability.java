@@ -1,9 +1,6 @@
 package com.tcon.learning_management_service.availability.entity;
-import com.tcon.learning_management_service.availability.dto.SessionMode;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+
+import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -11,10 +8,8 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.DayOfWeek;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.time.Instant;
+import java.util.*;
 
 @Data
 @Builder
@@ -29,13 +24,8 @@ public class TeacherAvailability {
     @Indexed(unique = true)
     private String teacherId;
 
-    private String timezone;
-
     @Builder.Default
-    private Map<DayOfWeek, List<TimeSlot>> weeklyAvailability = new java.util.HashMap<>();
-
-    @Builder.Default
-    private List<DateOverride> dateOverrides = new ArrayList<>();
+    private Map<DayOfWeek, List<WeeklyTimeSlot>> weeklyAvailability = new HashMap<>();
 
     @Builder.Default
     private Integer bufferTimeMinutes = 15;
@@ -45,29 +35,16 @@ public class TeacherAvailability {
     private Boolean oneOnOneEnabled;
     private Boolean groupEnabled;
 
-    // ✅ CHANGED: multiple days instead of day1/day2 only
+    // Weekly pattern config (local time)
     @Builder.Default
-    private List<Integer> weeklyPatternDays = new ArrayList<>(); // 0=Sun,1=Mon,...6=Sat
-
-    // ✅ KEPT same
-    private String weeklyPatternStart;    // "HH:mm"
-    private String weeklyPatternEnd;      // "HH:mm"
+    private List<Integer> weeklyPatternDays = new ArrayList<>(); // 0=Sun..6=Sat
+    private String weeklyPatternStart; // "HH:mm[:ss]", normalized to "HH:mm:ss"
+    private String weeklyPatternEnd;   // "HH:mm[:ss]", normalized to "HH:mm:ss"
     private Boolean weeklyPatternEnabled;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DateOverride {
-        private LocalDateTime date;
-        private Boolean isAvailable;
-        private List<TimeSlot> timeSlots;
-        private String reason;
-    }
+    private Instant updatedAt;
 }

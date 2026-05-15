@@ -1,4 +1,5 @@
 package com.tcon.learning_management_service.course.service;
+
 import com.tcon.learning_management_service.course.entity.Grade;
 import com.tcon.learning_management_service.course.entity.Subject;
 import com.tcon.learning_management_service.course.entity.Topic;
@@ -35,7 +36,6 @@ public class CurriculumImportService {
                 return result;
             }
 
-            // Assume first row is header
             Iterator<Row> rowIterator = sheet.iterator();
             if (!rowIterator.hasNext()) {
                 result.getErrors().add("Sheet is empty");
@@ -71,7 +71,6 @@ public class CurriculumImportService {
                 map.put(key, cell.getColumnIndex());
             }
         }
-        // Expect these at least
         if (!map.containsKey("grade") || !map.containsKey("subject") || !map.containsKey("topic")) {
             throw new IllegalArgumentException("Header must contain Grade, Subject, Topic columns");
         }
@@ -93,7 +92,6 @@ public class CurriculumImportService {
         subjectName = subjectName.trim();
         topicName = topicName.trim();
 
-        // 1) Grade
         Grade grade = gradeRepository.findByNameIgnoreCase(gradeName);
         if (grade == null) {
             grade = Grade.builder()
@@ -105,7 +103,6 @@ public class CurriculumImportService {
             result.setGradesCreated(result.getGradesCreated() + 1);
         }
 
-        // 2) Subject (unique per grade+name)
         Subject subject = subjectRepository
                 .findByGradeIdAndNameIgnoreCase(grade.getId(), subjectName)
                 .orElse(null);
@@ -120,7 +117,6 @@ public class CurriculumImportService {
             result.setSubjectsCreated(result.getSubjectsCreated() + 1);
         }
 
-        // 3) Topic (unique per subject+name)
         Topic topic = topicRepository
                 .findBySubjectIdAndNameIgnoreCase(subject.getId(), topicName)
                 .orElse(null);
@@ -132,7 +128,6 @@ public class CurriculumImportService {
                     .isActive(true)
                     .durationMinutes(durationMinutes)
                     .build();
-            // If you add duration field later, set it here.
             topic = topicRepository.save(topic);
             result.setTopicsCreated(result.getTopicsCreated() + 1);
         } else {
@@ -188,7 +183,6 @@ public class CurriculumImportService {
         return s == null || s.trim().isEmpty();
     }
 
-    // Simple result DTO for frontend
     @lombok.Data
     public static class ImportResult {
         private int rowsProcessed;

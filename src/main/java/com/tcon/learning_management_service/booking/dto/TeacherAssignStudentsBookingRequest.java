@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -31,10 +31,10 @@ public class TeacherAssignStudentsBookingRequest {
 
     @NotNull
     @Future
-    private LocalDateTime sessionStartTime;
+    private Instant sessionStartTime;
 
     @NotNull
-    private LocalDateTime sessionEndTime;
+    private Instant sessionEndTime;
 
     @NotNull
     private BigDecimal amount;

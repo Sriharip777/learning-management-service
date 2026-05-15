@@ -8,11 +8,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class BatchDateAvailabilityRequest {
+public class DateSpecificAvailabilityResponseDto {
     private String teacherId;
     private List<DateSpecificAvailabilityDto> dateSlots;
-    private Integer bufferTimeMinutes;
-    private Boolean oneOnOneEnabled;
-    private Boolean groupEnabled;
-    private WeeklyPatternDto weeklyPattern;
 }

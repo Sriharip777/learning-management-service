@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -19,7 +19,7 @@ public class CourseSessionDto {
     private String description;
     private List<String> topics;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledStartTime;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant scheduledStartTime;
     private Integer durationMinutes;
 }

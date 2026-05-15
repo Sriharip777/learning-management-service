@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.demo.entity;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,7 +8,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -30,10 +29,10 @@ public class DemoClassLimit {
     @Builder.Default
     private Integer demosUsed = 0;
 
-    private LocalDateTime firstDemoAt;
-    private LocalDateTime lastDemoAt;
+    private Instant firstDemoAt;
+    private Instant lastDemoAt;
 
-    private LocalDateTime resetAt;
+    private Instant resetAt;
 
     @Builder.Default
     private Boolean isLimitActive = true;

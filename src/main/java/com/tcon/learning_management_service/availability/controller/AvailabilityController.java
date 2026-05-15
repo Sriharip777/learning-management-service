@@ -1,20 +1,20 @@
 package com.tcon.learning_management_service.availability.controller;
 
-
 import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
-import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
-import com.tcon.learning_management_service.availability.entity.TimeSlot;
+import com.tcon.learning_management_service.availability.dto.DateSpecificAvailabilityDto;
 import com.tcon.learning_management_service.availability.dto.SessionMode;
-import com.tcon.learning_management_service.availability.service.AvailabilityManagementService;
+import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
 import com.tcon.learning_management_service.availability.dto.WeeklyPatternDto;
+import com.tcon.learning_management_service.availability.entity.WeeklyTimeSlot;
+import com.tcon.learning_management_service.availability.service.AvailabilityManagementService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-
 import java.time.DayOfWeek;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,13 +27,6 @@ public class AvailabilityController {
 
     private final AvailabilityManagementService availabilityManagementService;
 
-
-    // ==================== WEEKLY AVAILABILITY (EXISTING) ====================
-
-    /**
-     * Set teacher's weekly availability
-     * POST /api/availability/teacher/{teacherId}
-     */
     @PostMapping("/teacher/{teacherId}")
     public ResponseEntity<TeacherAvailabilityDto> setTeacherAvailability(
             @PathVariable String teacherId,
@@ -41,8 +34,6 @@ public class AvailabilityController {
             @RequestBody AvailabilityRequest request) {
 
         log.info("POST /api/availability/teacher/{} - Setting availability", teacherId);
-        log.info("User ID: {}", userId);
-        log.info("Request body: {}", request);
 
         if (!userId.equals(teacherId)) {
             log.error("Unauthorized: user {} trying to set availability for teacher {}", userId, teacherId);
@@ -50,16 +41,13 @@ public class AvailabilityController {
         }
 
         try {
-            Map<DayOfWeek, List<TimeSlot>> weeklyAvailability =
+            Map<DayOfWeek, List<WeeklyTimeSlot>> weeklyAvailability =
                     convertWeeklyAvailability(request.getWeeklyAvailability());
-
-            log.info("Converted weekly availability: {}", weeklyAvailability);
 
             TeacherAvailabilityDto availability =
                     availabilityManagementService.setTeacherAvailability(
                             teacherId,
                             weeklyAvailability,
-                            request.getTimezone(),
                             request.getBufferTimeMinutes(),
                             request.getMaxSessionsPerDay(),
                             request.getOneOnOneEnabled(),
@@ -76,10 +64,6 @@ public class AvailabilityController {
         }
     }
 
-    /**
-     * Get teacher's configured weekly availability
-     * GET /api/availability/teacher/{teacherId}
-     */
     @GetMapping("/teacher/{teacherId}")
     public ResponseEntity<TeacherAvailabilityDto> getTeacherAvailability(
             @PathVariable String teacherId) {
@@ -91,27 +75,26 @@ public class AvailabilityController {
                     availabilityManagementService.getTeacherAvailability(teacherId);
 
             log.info("Found availability for teacher {} with {} days configured",
-                    teacherId, availability.getWeeklyAvailability().size());
+                    teacherId,
+                    availability.getWeeklyAvailability() != null
+                            ? availability.getWeeklyAvailability().size()
+                            : 0);
 
             return ResponseEntity.ok(availability);
 
         } catch (IllegalArgumentException e) {
             log.warn("Teacher availability not found: {} - Returning empty config", teacherId);
 
-            // Return empty config instead of error
-            return ResponseEntity.ok(TeacherAvailabilityDto.builder()
-                    .teacherId(teacherId)
-                    .timezone("UTC")
-                    .bufferTimeMinutes(15)
-                    .weeklyAvailability(new HashMap<>())
-                    .build());
+            return ResponseEntity.ok(
+                    TeacherAvailabilityDto.builder()
+                            .teacherId(teacherId)
+                            .bufferTimeMinutes(15)
+                            .weeklyAvailability(new HashMap<>())
+                            .build()
+            );
         }
     }
 
-    /**
-     * Delete teacher's weekly availability
-     * DELETE /api/availability/teacher/{teacherId}
-     */
     @DeleteMapping("/teacher/{teacherId}")
     public ResponseEntity<Void> deleteTeacherAvailability(
             @PathVariable String teacherId,
@@ -119,7 +102,6 @@ public class AvailabilityController {
 
         log.info("DELETE /api/availability/teacher/{} - Deleting availability", teacherId);
 
-        // Authorization check
         if (!userId.equals(teacherId)) {
             log.error("Unauthorized: user {} trying to delete availability for teacher {}", userId, teacherId);
             throw new IllegalArgumentException("Unauthorized: You can only delete your own availability");
@@ -131,16 +113,12 @@ public class AvailabilityController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Add a single time slot
-     * POST /api/availability/teacher/{teacherId}/slot
-     */
     @PostMapping("/teacher/{teacherId}/slot")
     public ResponseEntity<TeacherAvailabilityDto> addTimeSlot(
             @PathVariable String teacherId,
             @RequestHeader("X-User-Id") String userId,
             @RequestParam DayOfWeek dayOfWeek,
-            @RequestBody TimeSlot timeSlot) {
+            @RequestBody WeeklyTimeSlot timeSlot) {
 
         log.info("Adding time slot for teacher {} on {}: {} - {}",
                 teacherId, dayOfWeek, timeSlot.getStartTime(), timeSlot.getEndTime());
@@ -155,16 +133,12 @@ public class AvailabilityController {
         return ResponseEntity.ok(availability);
     }
 
-    /**
-     * Remove a time slot
-     * DELETE /api/availability/teacher/{teacherId}/slot
-     */
     @DeleteMapping("/teacher/{teacherId}/slot")
     public ResponseEntity<TeacherAvailabilityDto> removeTimeSlot(
             @PathVariable String teacherId,
             @RequestHeader("X-User-Id") String userId,
             @RequestParam DayOfWeek dayOfWeek,
-            @RequestBody TimeSlot timeSlot) {
+            @RequestBody WeeklyTimeSlot timeSlot) {
 
         log.info("Removing time slot for teacher {} on {}: {} - {}",
                 teacherId, dayOfWeek, timeSlot.getStartTime(), timeSlot.getEndTime());
@@ -179,94 +153,74 @@ public class AvailabilityController {
         return ResponseEntity.ok(availability);
     }
 
-    // ==================== DATE-SPECIFIC AVAILABILITY (NEW) ====================
-
-    /**
-     * ✅ Save date-specific availability (batch)
-     * POST /api/availability/date-specific/batch
-     */
     @PostMapping("/date-specific/batch")
     public ResponseEntity<Map<String, Object>> saveDateSpecificAvailabilityBatch(
             @RequestBody BatchDateAvailabilityRequest request) {
 
-        log.info("📅 Saving batch date-specific availability for teacher {}", request.getTeacherId());
-        log.info("Date slots count: {}", request.getDateSlots().size());
+        int count = request != null && request.getDateSlots() != null ? request.getDateSlots().size() : 0;
+        log.info("Saving batch date-specific availability for teacher {}", request != null ? request.getTeacherId() : null);
+        log.info("Date slots count: {}", count);
 
         try {
             availabilityManagementService.saveDateSpecificAvailabilityBatch(request);
 
-            log.info("✅ Saved {} date-specific availability entries", request.getDateSlots().size());
+            log.info("Saved {} date-specific availability entries", count);
             return ResponseEntity.ok(Map.of(
                     "message", "Availability saved successfully",
-                    "count", request.getDateSlots().size()
+                    "count", count
             ));
 
         } catch (Exception e) {
-            log.error("❌ Failed to save date-specific availability", e);
-            return ResponseEntity.status(500).body(Map.of(
+            log.error("Failed to save date-specific availability", e);
+            return ResponseEntity.internalServerError().body(Map.of(
                     "message", "Failed to save availability: " + e.getMessage()
             ));
         }
     }
 
-    /**
-     * ✅ Get all date-specific availability for a teacher
-     * GET /api/availability/date-specific/{teacherId}
-     */
     @GetMapping("/date-specific/{teacherId}")
-    public ResponseEntity<Map<String, List<TimeSlot>>> getDateSpecificAvailability(
+    public ResponseEntity<List<DateSpecificAvailabilityDto>> getDateSpecificAvailability(
             @PathVariable String teacherId,
             @RequestParam(required = false) SessionMode mode) {
 
-        log.info("📅 Fetching date-specific availability for teacher {} with mode {}", teacherId, mode);
+        log.info("Fetching date-specific availability for teacher {} with mode {}", teacherId, mode);
 
         try {
-            Map<String, List<TimeSlot>> availability =
+            List<DateSpecificAvailabilityDto> availability =
                     availabilityManagementService.getDateSpecificAvailability(teacherId, mode);
 
-            log.info("✅ Found {} date-specific entries", availability.size());
+            log.info("Found {} date-specific entries", availability.size());
             return ResponseEntity.ok(availability);
 
         } catch (Exception e) {
-            log.error("❌ Failed to fetch date-specific availability", e);
-            return ResponseEntity.status(500).body(new HashMap<>());
+            log.error("Failed to fetch date-specific availability", e);
+            return ResponseEntity.internalServerError().body(List.of());
         }
     }
 
-
-    /**
-     * ✅ Delete specific date availability
-     * DELETE /api/availability/date-specific/{teacherId}/{date}
-     */
-    @DeleteMapping("/date-specific/{teacherId}/{date}")
+    @DeleteMapping("/date-specific/{teacherId}/{dayStartUtc}")
     public ResponseEntity<Map<String, String>> deleteDateSpecificAvailability(
             @PathVariable String teacherId,
-            @PathVariable String date) {
+            @PathVariable String dayStartUtc) {
 
-        log.info("🗑️ Deleting date-specific availability for teacher {} on {}", teacherId, date);
+        log.info("Deleting date-specific availability for teacher {} on {}", teacherId, dayStartUtc);
 
         try {
-            LocalDate localDate = LocalDate.parse(date);
-            availabilityManagementService.deleteDateSpecificAvailability(teacherId, localDate);
+            Instant utcDayStart = Instant.parse(dayStartUtc);
+            availabilityManagementService.deleteDateSpecificAvailability(teacherId, utcDayStart);
 
             return ResponseEntity.ok(Map.of("message", "Availability deleted successfully"));
 
         } catch (Exception e) {
-            log.error("❌ Failed to delete date-specific availability", e);
-            return ResponseEntity.status(500).body(Map.of(
+            log.error("Failed to delete date-specific availability", e);
+            return ResponseEntity.internalServerError().body(Map.of(
                     "message", "Failed to delete availability: " + e.getMessage()
             ));
         }
     }
 
-    // ==================== HELPER METHODS ====================
-
-    /**
-     * Convert weeklyAvailability from Object map to proper DayOfWeek map
-     * Handles both String keys (from JSON) and DayOfWeek keys
-     */
-    private Map<DayOfWeek, List<TimeSlot>> convertWeeklyAvailability(Object weeklyAvailabilityObj) {
-        Map<DayOfWeek, List<TimeSlot>> result = new HashMap<>();
+    private Map<DayOfWeek, List<WeeklyTimeSlot>> convertWeeklyAvailability(Object weeklyAvailabilityObj) {
+        Map<DayOfWeek, List<WeeklyTimeSlot>> result = new HashMap<>();
 
         if (weeklyAvailabilityObj == null) {
             return result;
@@ -278,15 +232,13 @@ public class AvailabilityController {
 
             for (Map.Entry<String, Object> entry : rawMap.entrySet()) {
                 try {
-                    // Convert string day to DayOfWeek enum
                     DayOfWeek day = DayOfWeek.valueOf(entry.getKey().toUpperCase());
 
-                    // Convert slots list
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> slotsList = (List<Map<String, Object>>) entry.getValue();
 
-                    List<TimeSlot> timeSlots = slotsList.stream()
-                            .map(this::convertToTimeSlot)
+                    List<WeeklyTimeSlot> timeSlots = slotsList.stream()
+                            .map(this::convertToWeeklyTimeSlot)
                             .toList();
 
                     result.put(day, timeSlots);
@@ -304,10 +256,7 @@ public class AvailabilityController {
         return result;
     }
 
-    /**
-     * Convert map to TimeSlot object
-     */
-    private TimeSlot convertToTimeSlot(Map<String, Object> slotMap) {
+    private WeeklyTimeSlot convertToWeeklyTimeSlot(Map<String, Object> slotMap) {
         String startTime = (String) slotMap.get("startTime");
         String endTime = (String) slotMap.get("endTime");
         Boolean isAvailable = slotMap.containsKey("isAvailable")
@@ -322,7 +271,7 @@ public class AvailabilityController {
             mode = SessionMode.ONE_ON_ONE;
         }
 
-        return TimeSlot.builder()
+        return WeeklyTimeSlot.builder()
                 .startTime(startTime)
                 .endTime(endTime)
                 .isAvailable(isAvailable)
@@ -330,17 +279,10 @@ public class AvailabilityController {
                 .build();
     }
 
-
-    // ==================== REQUEST/RESPONSE DTOs ====================
-
-    /**
-     * Request body for setting availability
-     */
-    @lombok.Data
+    @Data
     public static class AvailabilityRequest {
         private String teacherId;
-        private String timezone;
-        private Object weeklyAvailability; // Using Object to handle JSON deserialization
+        private Object weeklyAvailability;
         private Integer bufferTimeMinutes;
         private Integer maxSessionsPerDay;
         private Boolean oneOnOneEnabled;

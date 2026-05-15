@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Data
@@ -25,9 +26,8 @@ public class RoomCreateRequest {
     @NotBlank(message = "Student id is required")
     private String studentId;
 
-    @NotNull(message = "Scheduled start time is required")
-    @Future(message = "Scheduled start time must be in the future")
-    private LocalDateTime scheduledStartTime;
+    // SessionScheduleRequest
+    private Instant scheduledStartTime;
 
     @NotNull(message = "Duration is required")
     private Integer durationMinutes;

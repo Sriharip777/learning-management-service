@@ -5,7 +5,7 @@ import com.tcon.learning_management_service.booking.entity.BookingStatus;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,8 +18,8 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
 
     boolean existsByStudentIdAndSessionStartTimeLessThanAndSessionEndTimeGreaterThanAndStatusIn(
             String studentId,
-            LocalDateTime sessionStartTime,
-            LocalDateTime sessionEndTime,
+            Instant sessionStartTime,
+            Instant sessionEndTime,
             List<BookingStatus> statuses
     );
 
@@ -31,25 +31,24 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
 
     List<Booking> findBySessionId(String sessionId);
 
-    // ✅ NEW: all bookings for a parent (all their children)
     List<Booking> findByParentId(String parentId);
 
     List<Booking> findBySessionIdAndStatus(String sessionId, BookingStatus status);
 
     List<Booking> findByCourseId(String courseId);
 
-    List<Booking> findBySessionStartTimeBetween(LocalDateTime start, LocalDateTime end);
+    List<Booking> findBySessionStartTimeBetween(Instant start, Instant end);
 
     List<Booking> findByStudentIdAndSessionStartTimeBetween(
-            String studentId, LocalDateTime start, LocalDateTime end);
+            String studentId, Instant start, Instant end);
 
     List<Booking> findByTeacherIdAndSessionStartTimeBetween(
-            String teacherId, LocalDateTime start, LocalDateTime end);
+            String teacherId, Instant start, Instant end);
 
     List<Booking> findByTeacherIdAndSessionStartTimeLessThanAndSessionEndTimeGreaterThan(
             String teacherId,
-            LocalDateTime slotEnd,
-            LocalDateTime slotStart
+            Instant slotEnd,
+            Instant slotStart
     );
 
     Long countBySessionIdAndStatus(String sessionId, BookingStatus status);
@@ -63,7 +62,7 @@ public interface BookingRepository extends MongoRepository<Booking, String> {
     Optional<Booking> findByTeacherIdAndStudentIdAndSessionStartTimeAndSessionEndTime(
             String teacherId,
             String studentId,
-            LocalDateTime sessionStartTime,
-            LocalDateTime sessionEndTime
+            Instant sessionStartTime,
+            Instant sessionEndTime
     );
 }

@@ -14,8 +14,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -55,12 +57,10 @@ public class CourseEventListener {
             Course course = courseRepository.findById(courseId)
                     .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-            // Auto-generate sessions based on course schedule
             List<ClassSession> sessions = generateSessionsForCourse(course);
 
             log.info("✅ Generated {} sessions for course: {}", sessions.size(), courseId);
 
-            // Publish SESSION_CREATED event for each session
             for (ClassSession session : sessions) {
                 sessionEventPublisher.publishSessionCreated(session);
             }
@@ -77,7 +77,7 @@ public class CourseEventListener {
         try {
             List<ClassSession> sessions = sessionRepository.findByCourseId(courseId);
 
-            LocalDateTime now = LocalDateTime.now();
+            Instant now = Instant.now();
             for (ClassSession session : sessions) {
                 if (session.getScheduledStartTime().isAfter(now) &&
                         session.getStatus() == ClassStatus.SCHEDULED) {
@@ -104,7 +104,6 @@ public class CourseEventListener {
 
         List<ClassSession> sessions = new ArrayList<>();
 
-        // ✅ FIXED: Get CourseSchedule object directly
         CourseSchedule schedule = course.getSchedule();
 
         if (schedule == null || schedule.getDaysOfWeek() == null || schedule.getDaysOfWeek().isEmpty()) {
@@ -116,24 +115,28 @@ public class CourseEventListener {
         LocalTime startTime = schedule.getStartTime() != null ? schedule.getStartTime() : LocalTime.of(10, 0);
         LocalTime endTime = schedule.getEndTime() != null ? schedule.getEndTime() : LocalTime.of(11, 0);
 
-        LocalDateTime currentDate = course.getStartDate().atTime(startTime);
-        LocalDateTime endDate = course.getEndDate().atTime(23, 59);
+        Instant currentDate = course.getStartDate().atTime(startTime).toInstant(ZoneOffset.UTC);
+        Instant endDate = course.getEndDate().atTime(23, 59).toInstant(ZoneOffset.UTC);
 
         int sessionCount = 0;
         int maxSessions = course.getTotalSessions();
 
         while (sessionCount < maxSessions && currentDate.isBefore(endDate)) {
 
-            if (daysOfWeek.contains(currentDate.getDayOfWeek())) {
+            if (daysOfWeek.contains(currentDate.atOffset(ZoneOffset.UTC).getDayOfWeek())) {
 
-                LocalDateTime sessionStart = currentDate;
-                LocalDateTime sessionEnd = currentDate.withHour(endTime.getHour())
-                        .withMinute(endTime.getMinute());
+                Instant sessionStart = currentDate;
+                Instant sessionEnd = currentDate.atOffset(ZoneOffset.UTC)
+                        .withHour(endTime.getHour())
+                        .withMinute(endTime.getMinute())
+                        .withSecond(0)
+                        .withNano(0)
+                        .toInstant();
 
-                int durationMinutes = (int) java.time.Duration.between(sessionStart, sessionEnd).toMinutes();
+                int durationMinutes = (int) Duration.between(sessionStart, sessionEnd).toMinutes();
 
                 ClassSession session = ClassSession.builder()
-                        .sessionType(SessionType.REGULAR)  // ✅ FIXED: Use REGULAR instead of GROUP
+                        .sessionType(SessionType.REGULAR)
                         .courseId(course.getId())
                         .teacherId(course.getTeacherId())
                         .teacherName("")
@@ -160,7 +163,7 @@ public class CourseEventListener {
                         sessionCount, maxSessions, saved.getId(), sessionStart);
             }
 
-            currentDate = currentDate.plusDays(1);
+            currentDate = currentDate.plus(Duration.ofDays(1));
         }
 
         return sessions;

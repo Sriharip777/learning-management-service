@@ -12,12 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.util.Objects;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CancellationService {
+
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
+    private static final BigDecimal FIFTY_PERCENT = new BigDecimal("0.50");
+    private static final BigDecimal TWENTY_FIVE_PERCENT = new BigDecimal("0.25");
 
     private final BookingRepository bookingRepository;
     private final BookingEventPublisher eventPublisher;
@@ -29,69 +34,108 @@ public class CancellationService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
-        // Validate ownership
-        if (!booking.getStudentId().equals(userId) && !booking.getTeacherId().equals(userId)) {
-            throw new IllegalArgumentException("Unauthorized: User does not own this booking");
-        }
+        validateOwnership(booking, userId);
+        validateCancellableStatus(booking);
+        validateSessionNotStarted(booking);
 
-        // Validate status
-        if (booking.getStatus() != BookingStatus.CONFIRMED && booking.getStatus() != BookingStatus.PENDING) {
-            throw new IllegalArgumentException("Only confirmed or pending bookings can be cancelled");
-        }
-
-        // Check if session has already started
-        if (booking.getSessionStartTime().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("Cannot cancel bookings for sessions that have already started");
-        }
-
-        // Calculate refund amount
         BigDecimal refundAmount = calculateRefundAmount(booking);
+        Instant now = Instant.now();
 
-        // Update booking
         booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancellationReason(reason);
-        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancellationReason(reasonOrDefault(reason));
+        booking.setCancelledAt(now);
         booking.setCancelledBy(userId);
         booking.setRefundAmount(refundAmount);
+        booking.setUpdatedAt(now);
 
         Booking updated = bookingRepository.save(booking);
-        log.info("Booking cancelled. Refund amount: {}", refundAmount);
+        log.info("Booking cancelled successfully. bookingId={}, refundAmount={}", bookingId, refundAmount);
 
-        // Publish event
         eventPublisher.publishBookingCancelled(updated);
 
         return refundAmount;
     }
 
+    private void validateOwnership(Booking booking, String userId) {
+        boolean isStudent = Objects.equals(booking.getStudentId(), userId);
+        boolean isTeacher = Objects.equals(booking.getTeacherId(), userId);
+
+        if (!isStudent && !isTeacher) {
+            throw new IllegalArgumentException("Unauthorized: User does not own this booking");
+        }
+    }
+
+    private void validateCancellableStatus(Booking booking) {
+        if (booking.getStatus() != BookingStatus.CONFIRMED
+                && booking.getStatus() != BookingStatus.PENDING
+                && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new IllegalArgumentException("Only confirmed or pending bookings can be cancelled");
+        }
+    }
+
+    private void validateSessionNotStarted(Booking booking) {
+        if (booking.getSessionStartTime() == null) {
+            throw new IllegalArgumentException("Booking session start time is missing");
+        }
+
+        if (!booking.getSessionStartTime().isAfter(Instant.now())) {
+            throw new IllegalArgumentException("Cannot cancel bookings for sessions that have already started");
+        }
+    }
+
     private BigDecimal calculateRefundAmount(Booking booking) {
-        if (booking.getAmount() == null || booking.getCancellationPolicy() == null) {
+        if (booking.getAmount() == null
+                || booking.getAmount().compareTo(BigDecimal.ZERO) <= 0
+                || booking.getCancellationPolicy() == null
+                || booking.getSessionStartTime() == null) {
             return BigDecimal.ZERO;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         long hoursUntilSession = Duration.between(now, booking.getSessionStartTime()).toHours();
 
-        // Check cancellation policy
         if (hoursUntilSession >= booking.getCancellationPolicy().getHoursBeforeSession()) {
-            // Full refund or policy refund percentage
-            BigDecimal refundPercentage = BigDecimal.valueOf(
-                    booking.getCancellationPolicy().getRefundPercentage());
+            BigDecimal refundPercentage = toBigDecimal(booking.getCancellationPolicy().getRefundPercentage());
+
             return booking.getAmount()
                     .multiply(refundPercentage)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    .divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
         } else if (hoursUntilSession >= 12) {
-            // 50% refund if cancelled 12-24 hours before
             return booking.getAmount()
-                    .multiply(BigDecimal.valueOf(0.5))
+                    .multiply(FIFTY_PERCENT)
                     .setScale(2, RoundingMode.HALF_UP);
         } else if (hoursUntilSession >= 6) {
-            // 25% refund if cancelled 6-12 hours before
             return booking.getAmount()
-                    .multiply(BigDecimal.valueOf(0.25))
+                    .multiply(TWENTY_FIVE_PERCENT)
                     .setScale(2, RoundingMode.HALF_UP);
         } else {
-            // No refund if cancelled less than 6 hours before
             return BigDecimal.ZERO;
         }
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Integer integer) {
+            return BigDecimal.valueOf(integer.longValue());
+        }
+        if (value instanceof Long longValue) {
+            return BigDecimal.valueOf(longValue);
+        }
+        if (value instanceof Double doubleValue) {
+            return BigDecimal.valueOf(doubleValue);
+        }
+        if (value instanceof String stringValue) {
+            return new BigDecimal(stringValue.trim());
+        }
+        throw new IllegalArgumentException("Unsupported refund percentage type: " + value.getClass().getName());
+    }
+
+    private String reasonOrDefault(String reason) {
+        return (reason != null && !reason.isBlank()) ? reason.trim() : "Cancelled by user";
     }
 }

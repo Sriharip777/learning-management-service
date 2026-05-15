@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.session.dto;
 
-
 import com.tcon.learning_management_service.session.entity.SessionType;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Min;
@@ -11,7 +10,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -33,7 +32,7 @@ public class SessionScheduleRequest {
 
     @NotNull(message = "Scheduled start time is required")
     @Future(message = "Scheduled start time must be in the future")
-    private LocalDateTime scheduledStartTime;
+    private Instant scheduledStartTime;
 
     @NotNull(message = "Duration is required")
     @Min(value = 15, message = "Duration must be at least 15 minutes")

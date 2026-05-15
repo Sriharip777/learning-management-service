@@ -12,7 +12,7 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -53,8 +53,8 @@ public class Booking {
     @Builder.Default
     private BookingStatus status = BookingStatus.PENDING;
 
-    private LocalDateTime sessionStartTime;
-    private LocalDateTime sessionEndTime;
+    private Instant sessionStartTime;
+    private Instant sessionEndTime;
 
     private List<SessionTime> sessions;
 
@@ -64,10 +64,10 @@ public class Booking {
     private String paymentId;
     private String transactionId;
 
-    private LocalDateTime bookedAt;
-    private LocalDateTime confirmedAt;
-    private LocalDateTime cancelledAt;
-    private LocalDateTime completedAt;
+    private Instant bookedAt;
+    private Instant confirmedAt;
+    private Instant cancelledAt;
+    private Instant completedAt;
 
     private String cancellationReason;
     private String cancelledBy;
@@ -76,18 +76,18 @@ public class Booking {
 
     private BigDecimal refundAmount;
     private String refundTransactionId;
-    private LocalDateTime refundedAt;
+    private Instant refundedAt;
 
     private Boolean reminderSent;
-    private LocalDateTime reminderSentAt;
+    private Instant reminderSentAt;
 
     private String notes;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     private String subjectName;
 
@@ -96,8 +96,8 @@ public class Booking {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SessionTime {
-        private LocalDateTime startTime;
-        private LocalDateTime endTime;
+        private Instant startTime;
+        private Instant endTime;
         private BigDecimal amount;
     }
 }

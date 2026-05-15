@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -38,24 +38,21 @@ public class SessionRescheduleService {
             throw new IllegalArgumentException("Only scheduled sessions can be rescheduled");
         }
 
-        // Calculate new end time
-        LocalDateTime newEndTime = request.getNewScheduledStartTime()
-                .plusMinutes(oldSession.getDurationMinutes());
+        Instant newEndTime = request.getNewScheduledStartTime()
+                .plusSeconds((long) oldSession.getDurationMinutes() * 60);
 
-        // Check for conflicts
         List<ClassSession> conflicts = sessionRepository.findByTeacherIdAndScheduledStartTimeBetween(
                 teacherId,
-                request.getNewScheduledStartTime().minusMinutes(oldSession.getDurationMinutes()),
+                request.getNewScheduledStartTime().minusSeconds((long) oldSession.getDurationMinutes() * 60),
                 newEndTime
         );
 
-        conflicts.removeIf(s -> s.getId().equals(sessionId)); // Exclude current session
+        conflicts.removeIf(s -> s.getId().equals(sessionId));
 
         if (!conflicts.isEmpty()) {
             throw new IllegalArgumentException("New time slot conflicts with existing sessions");
         }
 
-        // Create new session
         ClassSession newSession = ClassSession.builder()
                 .courseId(oldSession.getCourseId())
                 .teacherId(oldSession.getTeacherId())
@@ -76,23 +73,21 @@ public class SessionRescheduleService {
                 .notes(oldSession.getNotes())
                 .rescheduledFromId(sessionId)
                 .rescheduleReason(request.getReason())
-                .rescheduledAt(LocalDateTime.now())
+                .rescheduledAt(Instant.now())
                 .reminderSent(false)
                 .createdBy(teacherId)
                 .build();
 
         ClassSession savedNewSession = sessionRepository.save(newSession);
 
-        // Update old session status
         oldSession.setStatus(ClassStatus.RESCHEDULED);
         oldSession.setRescheduledToId(savedNewSession.getId());
         oldSession.setRescheduleReason(request.getReason());
-        oldSession.setRescheduledAt(LocalDateTime.now());
+        oldSession.setRescheduledAt(Instant.now());
         sessionRepository.save(oldSession);
 
         log.info("Session rescheduled successfully. Old: {}, New: {}", sessionId, savedNewSession.getId());
 
-        // Publish event
         eventPublisher.publishSessionRescheduled(oldSession, savedNewSession);
 
         return toDto(savedNewSession);

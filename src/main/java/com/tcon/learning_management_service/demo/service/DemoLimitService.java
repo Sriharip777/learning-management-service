@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.demo.service;
 
-
 import com.tcon.learning_management_service.demo.dto.DemoLimitDto;
 import com.tcon.learning_management_service.demo.entity.DemoClassLimit;
 import com.tcon.learning_management_service.demo.repository.DemoClassLimitRepository;
@@ -9,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Slf4j
 @Service
@@ -57,7 +56,7 @@ public class DemoLimitService {
         DemoClassLimit limit = getOrCreateLimit(studentId);
 
         limit.setDemosUsed(0);
-        limit.setResetAt(LocalDateTime.now());
+        limit.setResetAt(Instant.now());
 
         limitRepository.save(limit);
         log.info("Demo limit reset for student: {}", studentId);
@@ -75,17 +74,16 @@ public class DemoLimitService {
                     return limitRepository.save(newLimit);
                 });
     }
+
     @Transactional
     public DemoLimitDto initializeDemoLimit(String studentId) {
         log.info("Initializing demo limit for new student: {}", studentId);
 
-        // Check if limit already exists
         if (limitRepository.findByStudentId(studentId).isPresent()) {
             log.warn("Demo limit already exists for student: {}", studentId);
-            return getDemoLimit(studentId); // Return existing
+            return getDemoLimit(studentId);
         }
 
-        // Create new limit with 3 demos
         DemoClassLimit newLimit = DemoClassLimit.builder()
                 .studentId(studentId)
                 .totalDemosAllowed(3)
@@ -141,10 +139,10 @@ public class DemoLimitService {
         limit.setDemosUsed(limit.getDemosUsed() + count);
 
         if (limit.getFirstDemoAt() == null) {
-            limit.setFirstDemoAt(LocalDateTime.now());
+            limit.setFirstDemoAt(Instant.now());
         }
 
-        limit.setLastDemoAt(LocalDateTime.now());
+        limit.setLastDemoAt(Instant.now());
 
         limitRepository.save(limit);
         log.info("Consumed {} free demo session(s) for student: {}. Used: {}",
@@ -152,6 +150,4 @@ public class DemoLimitService {
 
         return getDemoLimit(studentId);
     }
-
-
 }

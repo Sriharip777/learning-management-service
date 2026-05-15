@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -60,7 +60,7 @@ public class CourseEnrollmentService {
                 .studentEmail(studentEmail)
                 .sessionMode(sessionMode != null ? sessionMode : "GROUP")
                 .status(CourseEnrollment.EnrollmentStatus.ACTIVE)
-                .enrolledAt(LocalDateTime.now())
+                .enrolledAt(Instant.now())
                 .amountPaid(amountPaid)
                 .paymentId(paymentId)
                 .sessionsAttended(0)
@@ -108,7 +108,7 @@ public class CourseEnrollmentService {
         }
 
         enrollment.setStatus(CourseEnrollment.EnrollmentStatus.CANCELLED);
-        enrollment.setCancelledAt(LocalDateTime.now());
+        enrollment.setCancelledAt(Instant.now());
         enrollmentRepository.save(enrollment);
 
         Course course = courseRepository.findById(enrollment.getCourseId())
@@ -135,7 +135,7 @@ public class CourseEnrollmentService {
 
             if (sessionsAttended >= totalSessions) {
                 enrollment.setStatus(CourseEnrollment.EnrollmentStatus.COMPLETED);
-                enrollment.setCompletedAt(LocalDateTime.now());
+                enrollment.setCompletedAt(Instant.now());
             }
         }
 

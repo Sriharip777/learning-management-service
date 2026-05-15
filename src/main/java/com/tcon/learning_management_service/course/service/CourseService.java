@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -60,10 +60,6 @@ public class CourseService {
     private final GradeRepository gradeRepository;
     private final SubjectRepository subjectRepository;
     private final TopicRepository topicRepository;
-
-    // =========================
-    //        ADMIN ONLY
-    // =========================
 
     public List<Course> getCoursesByTeacherId(String teacherId) {
         if (!hasText(teacherId)) {
@@ -152,8 +148,8 @@ public class CourseService {
                 .demoSessionDuration(request.getDemoSessionDuration())
                 .rating(0.0)
                 .totalReviews(0)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .createdBy(adminId)
                 .updatedBy(adminId)
                 .teacherId(null)
@@ -234,7 +230,7 @@ public class CourseService {
         course.setTopicIds(newTopicIds);
         normalizeTeacherAssignments(course);
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
 
         Course updated = courseRepository.save(course);
         log.info("Course updated successfully: {}", courseId);
@@ -258,7 +254,7 @@ public class CourseService {
         normalizeTeacherAssignments(course);
         course.setStatus(CourseStatus.PUBLISHED);
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
         courseRepository.save(course);
 
         log.info("Course published successfully: {}", courseId);
@@ -285,7 +281,7 @@ public class CourseService {
 
         course.setStatus(CourseStatus.DRAFT);
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
         courseRepository.save(course);
 
         log.info("Course unpublished successfully: {}", courseId);
@@ -307,16 +303,12 @@ public class CourseService {
 
         course.setStatus(CourseStatus.DELETED);
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
         courseRepository.save(course);
 
         log.info("Course deleted (soft) successfully: {}", courseId);
         eventPublisher.publishCourseDeleted(courseId);
     }
-
-    // =========================
-    //         READ APIs
-    // =========================
 
     public CourseDto getCourse(String courseId) {
         Course course = courseRepository.findById(courseId)
@@ -390,10 +382,6 @@ public class CourseService {
                 .toList();
     }
 
-    // =========================
-    //  COMMUNICATION / MAPPING
-    // =========================
-
     public boolean canUsersCommunicate(String user1, String user2) {
         if (!hasText(user1) || !hasText(user2)) {
             return false;
@@ -433,7 +421,6 @@ public class CourseService {
                 .toList();
 
         Set<String> teacherIds = new LinkedHashSet<>();
-
         for (Course course : courseRepository.findAllById(courseIds)) {
             teacherIds.addAll(getTeacherIdsFromCourse(course));
         }
@@ -474,10 +461,6 @@ public class CourseService {
 
         return studentIds.stream().toList();
     }
-
-    // =========================
-    //       DTO HELPERS
-    // =========================
 
     private CourseDto toDtoWithMasterData(Course course,
                                           Grade grade,
@@ -671,10 +654,6 @@ public class CourseService {
         }
     }
 
-    // =========================
-    //      SESSION HELPERS
-    // =========================
-
     private CourseSessionDto toSessionDto(CourseSession session) {
         if (session == null) return null;
         return CourseSessionDto.builder()
@@ -751,8 +730,6 @@ public class CourseService {
         }
     }
 
-    // ========= ASSIGN / UNASSIGN MULTIPLE TEACHERS =========
-
     @Transactional
     public CourseDto assignTeacherToCourse(String courseId, String teacherUserId, String adminId) {
         log.info("Admin {} assigning teacherUserId: {} to courseId: {}",
@@ -779,7 +756,7 @@ public class CourseService {
         normalizeTeacherAssignments(course);
 
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
 
         Course saved = courseRepository.save(course);
         log.info("Course {} now has teacherId={}, teacherIds={}", courseId, saved.getTeacherId(), saved.getTeacherIds());
@@ -820,7 +797,7 @@ public class CourseService {
         normalizeTeacherAssignments(course);
 
         course.setUpdatedBy(adminId);
-        course.setUpdatedAt(LocalDateTime.now());
+        course.setUpdatedAt(Instant.now());
 
         Course saved = courseRepository.save(course);
         log.info("Course {} now has teacherId={}, teacherIds={} after unassign",
@@ -899,7 +876,6 @@ public class CourseService {
             dto.setLanguages(teacher != null && teacher.getLanguages() != null ? teacher.getLanguages() : List.of());
             dto.setHourlyRate(teacher != null ? teacher.getHourlyRate() : null);
             dto.setCurrency(DEFAULT_CURRENCY);
-
             return dto;
         } catch (Exception ex) {
             log.error("Unexpected error while building assigned teacher for userId {}: {}", userId, ex.getMessage(), ex);
@@ -923,10 +899,6 @@ public class CourseService {
 
         return DEFAULT_TEACHER_NAME;
     }
-
-    // =========================
-    //       UTIL HELPERS
-    // =========================
 
     private <T> List<T> defaultList(List<T> list) {
         return list != null ? list : new ArrayList<>();

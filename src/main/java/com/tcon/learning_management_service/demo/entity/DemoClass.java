@@ -11,7 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -42,10 +42,10 @@ public class DemoClass {
 
     private DemoStatus status;
 
-    private LocalDateTime scheduledStartTime;
-    private LocalDateTime scheduledEndTime;
-    private LocalDateTime actualStartTime;
-    private LocalDateTime actualEndTime;
+    private Instant scheduledStartTime;
+    private Instant scheduledEndTime;
+    private Instant actualStartTime;
+    private Instant actualEndTime;
 
     private Integer durationMinutes;
 
@@ -63,13 +63,13 @@ public class DemoClass {
     private String enrollmentId;
 
     private Boolean reminderSent;
-    private LocalDateTime reminderSentAt;
+    private Instant reminderSentAt;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     public enum DemoStatus {
         SCHEDULED,

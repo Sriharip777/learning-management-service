@@ -10,7 +10,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,23 +36,16 @@ public class ClassSession {
     private String description;
 
     @Indexed
-    private String bookingId;  // ✅ ADD: Link back to booking for one-on-one
+    private String bookingId;
 
     @Indexed
-    private String studentId;  // ✅ ADD: Direct student reference for one-on-one
+    private String studentId;
 
     @Builder.Default
     private SessionType sessionType = SessionType.REGULAR;
 
     @Builder.Default
     private ClassStatus status = ClassStatus.SCHEDULED;
-
-    @Indexed
-    private LocalDateTime scheduledStartTime;
-
-    private LocalDateTime scheduledEndTime;
-    private LocalDateTime actualStartTime;
-    private LocalDateTime actualEndTime;
 
     private Integer durationMinutes;
 
@@ -75,26 +68,27 @@ public class ClassSession {
 
     private String notes;
 
-    // Rescheduling
     private String rescheduledFromId;
     private String rescheduledToId;
     private String rescheduleReason;
-    private LocalDateTime rescheduledAt;
 
-    // Cancellation
     private String cancellationReason;
-    private LocalDateTime cancelledAt;
     private String cancelledBy;
 
-    // Reminders
     private Boolean reminderSent;
-    private LocalDateTime reminderSentAt;
+    private String createdBy;
+
+    private Instant scheduledStartTime;
+    private Instant scheduledEndTime;
+    private Instant actualStartTime;
+    private Instant actualEndTime;
+    private Instant rescheduledAt;
+    private Instant cancelledAt;
+    private Instant reminderSentAt;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    private String createdBy;
+    private Instant updatedAt;
 }

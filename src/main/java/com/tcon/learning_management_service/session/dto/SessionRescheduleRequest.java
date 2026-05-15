@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Data
@@ -17,9 +18,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class SessionRescheduleRequest {
 
-    @NotNull(message = "New scheduled start time is required")
-    @Future(message = "New scheduled start time must be in the future")
-    private LocalDateTime newScheduledStartTime;
+    // SessionRescheduleRequest
+    private Instant newScheduledStartTime;
 
     @NotBlank(message = "Reschedule reason is required")
     private String reason;

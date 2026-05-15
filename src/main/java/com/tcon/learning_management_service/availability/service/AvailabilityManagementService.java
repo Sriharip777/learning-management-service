@@ -1,13 +1,15 @@
 package com.tcon.learning_management_service.availability.service;
 
+import com.tcon.learning_management_service.availability.dto.AvailabilitySlotDto;
 import com.tcon.learning_management_service.availability.dto.BatchDateAvailabilityRequest;
 import com.tcon.learning_management_service.availability.dto.DateSpecificAvailabilityDto;
 import com.tcon.learning_management_service.availability.dto.SessionMode;
 import com.tcon.learning_management_service.availability.dto.TeacherAvailabilityDto;
 import com.tcon.learning_management_service.availability.dto.WeeklyPatternDto;
+import com.tcon.learning_management_service.availability.entity.AvailabilitySlot;
 import com.tcon.learning_management_service.availability.entity.DateSpecificAvailability;
 import com.tcon.learning_management_service.availability.entity.TeacherAvailability;
-import com.tcon.learning_management_service.availability.entity.TimeSlot;
+import com.tcon.learning_management_service.availability.entity.WeeklyTimeSlot;
 import com.tcon.learning_management_service.availability.repository.DateSpecificAvailabilityRepository;
 import com.tcon.learning_management_service.availability.repository.TeacherAvailabilityRepository;
 import com.tcon.learning_management_service.booking.entity.Booking;
@@ -19,10 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -38,7 +38,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AvailabilityManagementService {
 
-    private static final String DEFAULT_TIMEZONE = "UTC";
     private static final int DEFAULT_BUFFER_MINUTES = 15;
     private static final DateTimeFormatter FLEXIBLE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("HH:mm[:ss]");
@@ -47,14 +46,12 @@ public class AvailabilityManagementService {
 
     private final TeacherAvailabilityRepository availabilityRepository;
     private final DateSpecificAvailabilityRepository dateSpecificRepository;
-    private final TimezoneValidationService timezoneValidationService;
     private final BookingRepository bookingRepository;
 
     @Transactional
     public TeacherAvailabilityDto setTeacherAvailability(
             String teacherId,
-            Map<DayOfWeek, List<TimeSlot>> weeklyAvailability,
-            String timezone,
+            Map<DayOfWeek, List<WeeklyTimeSlot>> weeklyAvailability,
             Integer bufferTimeMinutes,
             Integer maxSessionsPerDay,
             Boolean oneOnOneEnabled,
@@ -63,20 +60,16 @@ public class AvailabilityManagementService {
 
         validateTeacherId(teacherId);
 
-        log.info("Setting weekly availability for teacher: {}", teacherId);
-
-        String validatedTimezone = timezoneValidationService.validateAndNormalizeTimezone(
-                timezone != null ? timezone : DEFAULT_TIMEZONE
-        );
-
         TeacherAvailability availability = availabilityRepository.findByTeacherId(teacherId)
                 .orElseGet(() -> TeacherAvailability.builder()
                         .teacherId(teacherId)
                         .weeklyAvailability(new HashMap<>())
-                        .dateOverrides(new ArrayList<>())
+                        .bufferTimeMinutes(DEFAULT_BUFFER_MINUTES)
+                        .oneOnOneEnabled(Boolean.TRUE)
+                        .groupEnabled(Boolean.FALSE)
                         .build());
 
-        Map<DayOfWeek, List<TimeSlot>> mergedWeeklyAvailability =
+        Map<DayOfWeek, List<WeeklyTimeSlot>> mergedWeeklyAvailability =
                 Optional.ofNullable(availability.getWeeklyAvailability())
                         .map(HashMap::new)
                         .orElseGet(HashMap::new);
@@ -87,24 +80,16 @@ public class AvailabilityManagementService {
                     throw new IllegalArgumentException("DayOfWeek cannot be null");
                 }
 
-                List<TimeSlot> normalizedIncomingSlots = normalizeSlots(incomingSlots, "weekly availability for " + day);
-                List<TimeSlot> existingSlots = new ArrayList<>(
-                        mergedWeeklyAvailability.getOrDefault(day, new ArrayList<>())
-                );
+                List<WeeklyTimeSlot> normalizedIncomingSlots =
+                        normalizeWeeklySlots(incomingSlots, "weekly availability for " + day);
 
-                existingSlots.forEach(slot -> validateAndNormalizeSlot(slot, "existing weekly slot for " + day));
-
-                List<TimeSlot> combined = new ArrayList<>(existingSlots);
-                combined.addAll(normalizedIncomingSlots);
-
-                List<TimeSlot> finalSlots = deduplicateAndSortSlots(combined);
-                validateNoOverlaps(finalSlots, "weekly availability for " + day);
+                List<WeeklyTimeSlot> finalSlots = deduplicateAndSortWeeklySlots(normalizedIncomingSlots);
+                validateNoWeeklyOverlaps(finalSlots, "weekly availability for " + day);
                 mergedWeeklyAvailability.put(day, finalSlots);
             });
         }
 
         availability.setWeeklyAvailability(mergedWeeklyAvailability);
-        availability.setTimezone(validatedTimezone);
         availability.setBufferTimeMinutes(bufferTimeMinutes != null ? bufferTimeMinutes : DEFAULT_BUFFER_MINUTES);
         availability.setMaxSessionsPerDay(maxSessionsPerDay);
         availability.setOneOnOneEnabled(Boolean.TRUE.equals(oneOnOneEnabled));
@@ -113,102 +98,21 @@ public class AvailabilityManagementService {
         applyWeeklyPattern(availability, weeklyPattern);
 
         TeacherAvailability saved = availabilityRepository.save(availability);
-        log.info("Weekly availability saved successfully for teacher: {}", teacherId);
-
-        return toDto(saved);
+        return toTeacherAvailabilityDto(saved);
     }
 
-    @Transactional
-    public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("BatchDateAvailabilityRequest cannot be null");
-        }
-
-        validateTeacherId(request.getTeacherId());
-
-        log.info("Saving batch date-specific availability for teacher: {}", request.getTeacherId());
-
-        String validatedTimezone = timezoneValidationService.validateAndNormalizeTimezone(
-                request.getTimezone() != null ? request.getTimezone() : DEFAULT_TIMEZONE
-        );
-
-        TeacherAvailability availability = availabilityRepository.findByTeacherId(request.getTeacherId())
-                .orElseGet(() -> TeacherAvailability.builder()
-                        .teacherId(request.getTeacherId())
-                        .weeklyAvailability(new HashMap<>())
-                        .dateOverrides(new ArrayList<>())
-                        .build());
-
-        availability.setTimezone(validatedTimezone);
-        availability.setOneOnOneEnabled(Boolean.TRUE.equals(request.getOneOnOneEnabled()));
-        availability.setGroupEnabled(Boolean.TRUE.equals(request.getGroupEnabled()));
-
-        applyWeeklyPattern(availability, request.getWeeklyPattern());
-        availabilityRepository.save(availability);
-
-        if (request.getDateSlots() == null || request.getDateSlots().isEmpty()) {
-            log.warn("No date-specific slots provided for teacher: {}", request.getTeacherId());
-            return;
-        }
-
-        for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
-            if (dateDto == null) {
-                continue;
-            }
-
-            LocalDate date = parseDate(dateDto.getDate());
-
-            List<TimeSlot> incomingSlots = normalizeSlots(
-                    dateDto.getTimeSlots(),
-                    "date-specific slots for " + date
-            );
-
-            DateSpecificAvailability existingEntity = dateSpecificRepository
-                    .findByTeacherIdAndDate(request.getTeacherId(), date)
-                    .orElse(null);
-
-            List<TimeSlot> existingSlots = existingEntity != null
-                    ? normalizeSlots(existingEntity.getTimeSlots(), "existing date-specific slots for " + date)
-                    : new ArrayList<>();
-
-            List<TimeSlot> combinedSlots = new ArrayList<>(existingSlots);
-            combinedSlots.addAll(incomingSlots);
-
-            List<TimeSlot> finalSlots = deduplicateAndSortSlots(combinedSlots);
-            validateNoOverlaps(finalSlots, "date-specific availability for " + date);
-
-            DateSpecificAvailability entity = existingEntity != null
-                    ? existingEntity
-                    : DateSpecificAvailability.builder()
-                    .teacherId(request.getTeacherId())
-                    .date(date)
-                    .build();
-
-            entity.setTeacherId(request.getTeacherId());
-            entity.setDate(date);
-            entity.setTimeSlots(finalSlots);
-            entity.setTimezone(validatedTimezone);
-            entity.setBufferTimeMinutes(request.getBufferTimeMinutes() != null
-                    ? request.getBufferTimeMinutes()
-                    : DEFAULT_BUFFER_MINUTES);
-
-            dateSpecificRepository.save(entity);
-            log.info("Saved date-specific availability for teacher {} on {} with {} slots",
-                    request.getTeacherId(), date, finalSlots.size());
-        }
-    }
-
+    @Transactional(readOnly = true)
     public TeacherAvailabilityDto getTeacherAvailability(String teacherId) {
         validateTeacherId(teacherId);
 
         TeacherAvailability availability = availabilityRepository.findByTeacherId(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher availability not found: " + teacherId));
 
-        return toDto(availability);
+        return toTeacherAvailabilityDto(availability);
     }
 
     @Transactional
-    public TeacherAvailabilityDto addTimeSlot(String teacherId, DayOfWeek dayOfWeek, TimeSlot timeSlot) {
+    public TeacherAvailabilityDto addTimeSlot(String teacherId, DayOfWeek dayOfWeek, WeeklyTimeSlot timeSlot) {
         validateTeacherId(teacherId);
 
         if (dayOfWeek == null) {
@@ -221,31 +125,25 @@ public class AvailabilityManagementService {
         TeacherAvailability availability = availabilityRepository.findByTeacherId(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher availability not found"));
 
-        Map<DayOfWeek, List<TimeSlot>> weeklyAvailability =
+        Map<DayOfWeek, List<WeeklyTimeSlot>> weeklyAvailability =
                 Optional.ofNullable(availability.getWeeklyAvailability())
+                        .map(HashMap::new)
                         .orElseGet(HashMap::new);
 
-        List<TimeSlot> daySlots = new ArrayList<>(
-                weeklyAvailability.getOrDefault(dayOfWeek, new ArrayList<>())
-        );
+        List<WeeklyTimeSlot> daySlots = new ArrayList<>(weeklyAvailability.getOrDefault(dayOfWeek, List.of()));
+        daySlots.add(validateAndNormalizeWeeklySlot(timeSlot, "new time slot for " + dayOfWeek));
 
-        TimeSlot normalizedSlot = validateAndNormalizeSlot(timeSlot, "new time slot for " + dayOfWeek);
-        daySlots.add(normalizedSlot);
-
-        List<TimeSlot> finalSlots = deduplicateAndSortSlots(daySlots);
-        validateNoOverlaps(finalSlots, "weekly availability for " + dayOfWeek);
+        List<WeeklyTimeSlot> finalSlots = deduplicateAndSortWeeklySlots(daySlots);
+        validateNoWeeklyOverlaps(finalSlots, "weekly availability for " + dayOfWeek);
 
         weeklyAvailability.put(dayOfWeek, finalSlots);
         availability.setWeeklyAvailability(weeklyAvailability);
 
-        TeacherAvailability saved = availabilityRepository.save(availability);
-        log.info("Added time slot for teacher {} on {}", teacherId, dayOfWeek);
-
-        return toDto(saved);
+        return toTeacherAvailabilityDto(availabilityRepository.save(availability));
     }
 
     @Transactional
-    public TeacherAvailabilityDto removeTimeSlot(String teacherId, DayOfWeek dayOfWeek, TimeSlot timeSlot) {
+    public TeacherAvailabilityDto removeTimeSlot(String teacherId, DayOfWeek dayOfWeek, WeeklyTimeSlot timeSlot) {
         validateTeacherId(teacherId);
 
         if (dayOfWeek == null) {
@@ -258,11 +156,12 @@ public class AvailabilityManagementService {
         TeacherAvailability availability = availabilityRepository.findByTeacherId(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher availability not found"));
 
-        Map<DayOfWeek, List<TimeSlot>> weeklyAvailability =
+        Map<DayOfWeek, List<WeeklyTimeSlot>> weeklyAvailability =
                 Optional.ofNullable(availability.getWeeklyAvailability())
+                        .map(HashMap::new)
                         .orElseGet(HashMap::new);
 
-        List<TimeSlot> daySlots = weeklyAvailability.get(dayOfWeek);
+        List<WeeklyTimeSlot> daySlots = weeklyAvailability.get(dayOfWeek);
 
         if (daySlots != null && !daySlots.isEmpty()) {
             String normalizedStart = normalizeTimeString(timeSlot.getStartTime());
@@ -276,87 +175,125 @@ public class AvailabilityManagementService {
             if (daySlots.isEmpty()) {
                 weeklyAvailability.remove(dayOfWeek);
             } else {
-                weeklyAvailability.put(dayOfWeek, deduplicateAndSortSlots(daySlots));
+                weeklyAvailability.put(dayOfWeek, deduplicateAndSortWeeklySlots(daySlots));
             }
         }
 
         availability.setWeeklyAvailability(weeklyAvailability);
-
-        TeacherAvailability saved = availabilityRepository.save(availability);
-        log.info("Removed time slot for teacher {} on {}", teacherId, dayOfWeek);
-
-        return toDto(saved);
+        return toTeacherAvailabilityDto(availabilityRepository.save(availability));
     }
 
     @Transactional
     public void deleteTeacherAvailability(String teacherId) {
         validateTeacherId(teacherId);
         availabilityRepository.deleteByTeacherId(teacherId);
-        log.info("Deleted weekly availability for teacher: {}", teacherId);
     }
 
-    public Map<String, List<TimeSlot>> getDateSpecificAvailability(String teacherId, SessionMode mode) {
+    @Transactional
+    public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("BatchDateAvailabilityRequest cannot be null");
+        }
+
+        validateTeacherId(request.getTeacherId());
+
+        TeacherAvailability availability = availabilityRepository.findByTeacherId(request.getTeacherId())
+                .orElseGet(() -> TeacherAvailability.builder()
+                        .teacherId(request.getTeacherId())
+                        .weeklyAvailability(new HashMap<>())
+                        .bufferTimeMinutes(DEFAULT_BUFFER_MINUTES)
+                        .oneOnOneEnabled(Boolean.TRUE)
+                        .groupEnabled(Boolean.FALSE)
+                        .build());
+
+        availability.setBufferTimeMinutes(
+                request.getBufferTimeMinutes() != null ? request.getBufferTimeMinutes() : DEFAULT_BUFFER_MINUTES
+        );
+        availability.setOneOnOneEnabled(Boolean.TRUE.equals(request.getOneOnOneEnabled()));
+        availability.setGroupEnabled(Boolean.TRUE.equals(request.getGroupEnabled()));
+        applyWeeklyPattern(availability, request.getWeeklyPattern());
+        availabilityRepository.save(availability);
+
+        if (request.getDateSlots() == null || request.getDateSlots().isEmpty()) {
+            return;
+        }
+
+        for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
+            if (dateDto == null) {
+                continue;
+            }
+
+            validateDateSpecificDto(dateDto);
+
+            List<AvailabilitySlot> incomingSlots = normalizeAvailabilitySlots(
+                    toEntitySlots(dateDto.getSlots()),
+                    "date-specific slots for " + dateDto.getDayStartUtc()
+            );
+
+            List<AvailabilitySlot> finalSlots = deduplicateAndSortAvailabilitySlots(incomingSlots);
+            validateNoUtcOverlaps(finalSlots, "date-specific availability for " + dateDto.getDayStartUtc());
+
+            DateSpecificAvailability entity = dateSpecificRepository
+                    .findByTeacherIdAndDayStartUtc(request.getTeacherId(), dateDto.getDayStartUtc())
+                    .orElseGet(() -> DateSpecificAvailability.builder()
+                            .teacherId(request.getTeacherId())
+                            .dayStartUtc(dateDto.getDayStartUtc())
+                            .build());
+
+            entity.setTeacherId(request.getTeacherId());
+            entity.setDayStartUtc(dateDto.getDayStartUtc());
+            entity.setSlots(finalSlots);
+            entity.setBufferTimeMinutes(
+                    request.getBufferTimeMinutes() != null ? request.getBufferTimeMinutes() : DEFAULT_BUFFER_MINUTES
+            );
+
+            dateSpecificRepository.save(entity);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<DateSpecificAvailabilityDto> getDateSpecificAvailability(String teacherId, SessionMode mode) {
         validateTeacherId(teacherId);
 
-        TeacherAvailability teacherAvailability = availabilityRepository.findByTeacherId(teacherId)
-                .orElse(null);
-
-        String teacherTimezone = teacherAvailability != null && teacherAvailability.getTimezone() != null
-                ? teacherAvailability.getTimezone()
-                : DEFAULT_TIMEZONE;
-
-        LocalDate today = LocalDate.now(ZoneId.of(teacherTimezone));
-        LocalDate futureDate = today.plusMonths(6);
-
-        List<DateSpecificAvailability> availabilities = dateSpecificRepository
-                .findByTeacherIdAndDateBetween(teacherId, today, futureDate);
+        List<DateSpecificAvailability> availabilities = dateSpecificRepository.findByTeacherId(teacherId);
 
         List<Booking> teacherBookings = bookingRepository.findByTeacherId(teacherId).stream()
                 .filter(this::blocksAvailability)
                 .toList();
 
-        Map<String, List<TimeSlot>> result = new LinkedHashMap<>();
+        return availabilities.stream()
+                .sorted(Comparator.comparing(DateSpecificAvailability::getDayStartUtc))
+                .map(avail -> {
+                    List<AvailabilitySlot> allSlotsForDate = Optional.ofNullable(avail.getSlots()).orElseGet(List::of);
 
-        availabilities.stream()
-                .sorted(Comparator.comparing(DateSpecificAvailability::getDate))
-                .forEach(avail -> {
-                    List<TimeSlot> allSlotsForDate = Optional.ofNullable(avail.getTimeSlots())
-                            .orElseGet(List::of);
-
-                    List<TimeSlot> filteredSlots = (mode == null)
+                    List<AvailabilitySlot> filteredSlots = mode == null
                             ? allSlotsForDate
                             : allSlotsForDate.stream()
                             .filter(slot -> matchesMode(slot, mode))
                             .toList();
 
-                    List<TimeSlot> reconciledSlots = filteredSlots.stream()
-                            .map(slot -> reconcileSlotWithBookings(avail.getDate(), slot, teacherBookings))
+                    List<AvailabilitySlotDto> reconciledSlots = filteredSlots.stream()
+                            .map(slot -> reconcileSlotWithBookings(slot, teacherBookings))
+                            .map(this::toSlotDto)
                             .toList();
 
-                    if (!reconciledSlots.isEmpty()) {
-                        String dateKey = avail.getDate().toString();
-
-                        result.merge(dateKey, new ArrayList<>(reconciledSlots), (existing, incoming) -> {
-                            List<TimeSlot> merged = new ArrayList<>(existing);
-                            merged.addAll(incoming);
-                            return deduplicateAndSortSlots(merged);
-                        });
-                    }
-                });
-
-        return result;
+                    return DateSpecificAvailabilityDto.builder()
+                            .dayStartUtc(avail.getDayStartUtc())
+                            .slots(reconciledSlots)
+                            .build();
+                })
+                .toList();
     }
 
     @Transactional
-    public void deleteDateSpecificAvailability(String teacherId, LocalDate date) {
+    public void deleteDateSpecificAvailability(String teacherId, Instant dayStartUtc) {
         validateTeacherId(teacherId);
 
-        if (date == null) {
-            throw new IllegalArgumentException("Date is required");
+        if (dayStartUtc == null) {
+            throw new IllegalArgumentException("dayStartUtc is required");
         }
 
-        dateSpecificRepository.deleteByTeacherIdAndDate(teacherId, date);
-        log.info("Deleted date-specific availability for teacher {} on {}", teacherId, date);
+        dateSpecificRepository.deleteByTeacherIdAndDayStartUtc(teacherId, dayStartUtc);
     }
 
     private void applyWeeklyPattern(TeacherAvailability availability, WeeklyPatternDto weeklyPattern) {
@@ -373,23 +310,19 @@ public class AvailabilityManagementService {
                 weeklyPattern.getDays() != null ? new ArrayList<>(weeklyPattern.getDays()) : new ArrayList<>()
         );
 
-        if (weeklyPattern.getTimeStart() != null && !weeklyPattern.getTimeStart().isBlank()) {
-            availability.setWeeklyPatternStart(normalizeTimeString(weeklyPattern.getTimeStart()));
-        } else {
-            availability.setWeeklyPatternStart(null);
-        }
+        availability.setWeeklyPatternStart(hasText(weeklyPattern.getTimeStart())
+                ? normalizeTimeString(weeklyPattern.getTimeStart())
+                : null);
 
-        if (weeklyPattern.getTimeEnd() != null && !weeklyPattern.getTimeEnd().isBlank()) {
-            availability.setWeeklyPatternEnd(normalizeTimeString(weeklyPattern.getTimeEnd()));
-        } else {
-            availability.setWeeklyPatternEnd(null);
-        }
+        availability.setWeeklyPatternEnd(hasText(weeklyPattern.getTimeEnd())
+                ? normalizeTimeString(weeklyPattern.getTimeEnd())
+                : null);
 
-        if (availability.getWeeklyPatternEnabled()) {
-            if (availability.getWeeklyPatternDays().isEmpty()) {
+        if (Boolean.TRUE.equals(availability.getWeeklyPatternEnabled())) {
+            if (availability.getWeeklyPatternDays() == null || availability.getWeeklyPatternDays().isEmpty()) {
                 throw new IllegalArgumentException("Weekly pattern days are required when weekly pattern is enabled");
             }
-            if (availability.getWeeklyPatternStart() == null || availability.getWeeklyPatternEnd() == null) {
+            if (!hasText(availability.getWeeklyPatternStart()) || !hasText(availability.getWeeklyPatternEnd())) {
                 throw new IllegalArgumentException("Weekly pattern start and end time are required when weekly pattern is enabled");
             }
 
@@ -402,26 +335,26 @@ public class AvailabilityManagementService {
         }
     }
 
-    private List<TimeSlot> normalizeSlots(List<TimeSlot> slots, String context) {
+    private List<WeeklyTimeSlot> normalizeWeeklySlots(List<WeeklyTimeSlot> slots, String context) {
         if (slots == null || slots.isEmpty()) {
             return new ArrayList<>();
         }
 
-        List<TimeSlot> normalized = new ArrayList<>();
-        for (TimeSlot slot : slots) {
-            normalized.add(validateAndNormalizeSlot(slot, context));
+        List<WeeklyTimeSlot> normalized = new ArrayList<>();
+        for (WeeklyTimeSlot slot : slots) {
+            normalized.add(validateAndNormalizeWeeklySlot(slot, context));
         }
         return normalized;
     }
 
-    private TimeSlot validateAndNormalizeSlot(TimeSlot slot, String context) {
+    private WeeklyTimeSlot validateAndNormalizeWeeklySlot(WeeklyTimeSlot slot, String context) {
         if (slot == null) {
             throw new IllegalArgumentException("Time slot cannot be null for " + context);
         }
-        if (slot.getStartTime() == null || slot.getStartTime().isBlank()) {
+        if (!hasText(slot.getStartTime())) {
             throw new IllegalArgumentException("Start time is required for " + context);
         }
-        if (slot.getEndTime() == null || slot.getEndTime().isBlank()) {
+        if (!hasText(slot.getEndTime())) {
             throw new IllegalArgumentException("End time is required for " + context);
         }
 
@@ -430,19 +363,18 @@ public class AvailabilityManagementService {
 
         LocalTime start;
         LocalTime end;
-
         try {
             start = LocalTime.parse(normalizedStart, FLEXIBLE_TIME_FORMATTER);
             end = LocalTime.parse(normalizedEnd, FLEXIBLE_TIME_FORMATTER);
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("Invalid time format for " + context + ": " + e.getMessage());
+            throw new IllegalArgumentException("Invalid time format for " + context + ": " + e.getMessage(), e);
         }
 
         if (!end.isAfter(start)) {
             throw new IllegalArgumentException("End time must be after start time for " + context);
         }
 
-        return TimeSlot.builder()
+        return WeeklyTimeSlot.builder()
                 .startTime(normalizedStart)
                 .endTime(normalizedEnd)
                 .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
@@ -450,42 +382,40 @@ public class AvailabilityManagementService {
                 .build();
     }
 
-    private List<TimeSlot> deduplicateAndSortSlots(List<TimeSlot> slots) {
-        Map<String, TimeSlot> uniqueSlots = new LinkedHashMap<>();
+    private List<WeeklyTimeSlot> deduplicateAndSortWeeklySlots(List<WeeklyTimeSlot> slots) {
+        Map<String, WeeklyTimeSlot> uniqueSlots = new LinkedHashMap<>();
 
-        for (TimeSlot slot : slots) {
+        for (WeeklyTimeSlot slot : slots) {
             if (slot == null) {
                 continue;
             }
 
-            TimeSlot normalizedSlot = validateAndNormalizeSlot(slot, "slot merge");
-            String uniqueKey = normalizedSlot.getStartTime() + "_" +
+            WeeklyTimeSlot normalizedSlot = validateAndNormalizeWeeklySlot(slot, "slot merge");
+            String key = normalizedSlot.getStartTime() + "_" +
                     normalizedSlot.getEndTime() + "_" +
                     (normalizedSlot.getMode() != null ? normalizedSlot.getMode().name() : "NULL");
 
-            uniqueSlots.putIfAbsent(uniqueKey, normalizedSlot);
+            uniqueSlots.put(key, normalizedSlot);
         }
 
-        List<TimeSlot> finalSlots = new ArrayList<>(uniqueSlots.values());
-        finalSlots.sort(Comparator.comparing(slot ->
-                LocalTime.parse(slot.getStartTime(), FLEXIBLE_TIME_FORMATTER)));
-
+        List<WeeklyTimeSlot> finalSlots = new ArrayList<>(uniqueSlots.values());
+        finalSlots.sort(Comparator.comparing(s -> LocalTime.parse(s.getStartTime(), FLEXIBLE_TIME_FORMATTER)));
         return finalSlots;
     }
 
-    private void validateNoOverlaps(List<TimeSlot> slots, String context) {
+    private void validateNoWeeklyOverlaps(List<WeeklyTimeSlot> slots, String context) {
         if (slots == null || slots.size() <= 1) {
             return;
         }
 
-        List<TimeSlot> sortedSlots = slots.stream()
-                .map(slot -> validateAndNormalizeSlot(slot, context))
+        List<WeeklyTimeSlot> sortedSlots = slots.stream()
+                .map(slot -> validateAndNormalizeWeeklySlot(slot, context))
                 .sorted(Comparator.comparing(slot -> LocalTime.parse(slot.getStartTime(), FLEXIBLE_TIME_FORMATTER)))
                 .toList();
 
         for (int i = 0; i < sortedSlots.size() - 1; i++) {
-            TimeSlot current = sortedSlots.get(i);
-            TimeSlot next = sortedSlots.get(i + 1);
+            WeeklyTimeSlot current = sortedSlots.get(i);
+            WeeklyTimeSlot next = sortedSlots.get(i + 1);
 
             LocalTime currentEnd = LocalTime.parse(current.getEndTime(), FLEXIBLE_TIME_FORMATTER);
             LocalTime nextStart = LocalTime.parse(next.getStartTime(), FLEXIBLE_TIME_FORMATTER);
@@ -501,7 +431,102 @@ public class AvailabilityManagementService {
         }
     }
 
-    private boolean matchesMode(TimeSlot slot, SessionMode mode) {
+    private List<AvailabilitySlot> toEntitySlots(List<AvailabilitySlotDto> slots) {
+        if (slots == null) {
+            return new ArrayList<>();
+        }
+
+        return slots.stream()
+                .map(slot -> AvailabilitySlot.builder()
+                        .startTimeUtc(slot.getStartTimeUtc())
+                        .endTimeUtc(slot.getEndTimeUtc())
+                        .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
+                        .mode(slot.getMode())
+                        .build())
+                .toList();
+    }
+
+    private List<AvailabilitySlot> normalizeAvailabilitySlots(List<AvailabilitySlot> slots, String context) {
+        if (slots == null || slots.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<AvailabilitySlot> normalized = new ArrayList<>();
+        for (AvailabilitySlot slot : slots) {
+            normalized.add(validateAndNormalizeAvailabilitySlot(slot, context));
+        }
+        return normalized;
+    }
+
+    private AvailabilitySlot validateAndNormalizeAvailabilitySlot(AvailabilitySlot slot, String context) {
+        if (slot == null) {
+            throw new IllegalArgumentException("Availability slot cannot be null for " + context);
+        }
+        if (slot.getStartTimeUtc() == null) {
+            throw new IllegalArgumentException("startTimeUtc is required for " + context);
+        }
+        if (slot.getEndTimeUtc() == null) {
+            throw new IllegalArgumentException("endTimeUtc is required for " + context);
+        }
+        if (!slot.getEndTimeUtc().isAfter(slot.getStartTimeUtc())) {
+            throw new IllegalArgumentException("endTimeUtc must be after startTimeUtc for " + context);
+        }
+
+        return AvailabilitySlot.builder()
+                .startTimeUtc(slot.getStartTimeUtc())
+                .endTimeUtc(slot.getEndTimeUtc())
+                .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
+                .mode(slot.getMode())
+                .build();
+    }
+
+    private List<AvailabilitySlot> deduplicateAndSortAvailabilitySlots(List<AvailabilitySlot> slots) {
+        Map<String, AvailabilitySlot> uniqueSlots = new LinkedHashMap<>();
+
+        for (AvailabilitySlot slot : slots) {
+            if (slot == null) {
+                continue;
+            }
+
+            AvailabilitySlot normalizedSlot = validateAndNormalizeAvailabilitySlot(slot, "slot merge");
+            String key = normalizedSlot.getStartTimeUtc() + "_" +
+                    normalizedSlot.getEndTimeUtc() + "_" +
+                    (normalizedSlot.getMode() != null ? normalizedSlot.getMode().name() : "NULL");
+
+            uniqueSlots.put(key, normalizedSlot);
+        }
+
+        List<AvailabilitySlot> finalSlots = new ArrayList<>(uniqueSlots.values());
+        finalSlots.sort(Comparator.comparing(AvailabilitySlot::getStartTimeUtc));
+        return finalSlots;
+    }
+
+    private void validateNoUtcOverlaps(List<AvailabilitySlot> slots, String context) {
+        if (slots == null || slots.size() <= 1) {
+            return;
+        }
+
+        List<AvailabilitySlot> sortedSlots = slots.stream()
+                .map(slot -> validateAndNormalizeAvailabilitySlot(slot, context))
+                .sorted(Comparator.comparing(AvailabilitySlot::getStartTimeUtc))
+                .toList();
+
+        for (int i = 0; i < sortedSlots.size() - 1; i++) {
+            AvailabilitySlot current = sortedSlots.get(i);
+            AvailabilitySlot next = sortedSlots.get(i + 1);
+
+            if (!current.getEndTimeUtc().isBefore(next.getStartTimeUtc())) {
+                throw new IllegalArgumentException(
+                        "UTC slot overlaps in " + context + ": " +
+                                current.getStartTimeUtc() + " - " + current.getEndTimeUtc() +
+                                " overlaps with " +
+                                next.getStartTimeUtc() + " - " + next.getEndTimeUtc()
+                );
+            }
+        }
+    }
+
+    private boolean matchesMode(AvailabilitySlot slot, SessionMode mode) {
         if (mode == null) {
             return true;
         }
@@ -517,69 +542,50 @@ public class AvailabilityManagementService {
         return slot.getMode() == mode || slot.getMode() == SessionMode.BOTH;
     }
 
-    private boolean blocksAvailability(Booking booking) {
-        if (booking == null || booking.getStatus() == null) {
-            return false;
-        }
-        return booking.getStatus() == BookingStatus.CONFIRMED
-                || booking.getStatus() == BookingStatus.PENDING
-                || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
-    }
-
-    private TimeSlot reconcileSlotWithBookings(LocalDate slotDate, TimeSlot slot, List<Booking> teacherBookings) {
-        TimeSlot normalizedSlot = validateAndNormalizeSlot(slot, "date-specific availability reconciliation");
+    private AvailabilitySlot reconcileSlotWithBookings(AvailabilitySlot slot, List<Booking> teacherBookings) {
+        AvailabilitySlot normalizedSlot = validateAndNormalizeAvailabilitySlot(slot, "availability reconciliation");
 
         boolean occupied = teacherBookings.stream()
-                .anyMatch(booking -> bookingOccupiesSlot(booking, slotDate, normalizedSlot));
+                .anyMatch(booking -> bookingOccupiesSlot(booking, normalizedSlot));
 
-        return TimeSlot.builder()
-                .startTime(normalizedSlot.getStartTime())
-                .endTime(normalizedSlot.getEndTime())
+        return AvailabilitySlot.builder()
+                .startTimeUtc(normalizedSlot.getStartTimeUtc())
+                .endTimeUtc(normalizedSlot.getEndTimeUtc())
                 .mode(normalizedSlot.getMode())
                 .isAvailable(Boolean.TRUE.equals(normalizedSlot.getIsAvailable()) && !occupied)
                 .build();
     }
 
-    private boolean bookingOccupiesSlot(Booking booking, LocalDate slotDate, TimeSlot slot) {
-        if (booking == null || slotDate == null || slot == null) {
+    private boolean bookingOccupiesSlot(Booking booking, AvailabilitySlot slot) {
+        if (booking == null || slot == null) {
             return false;
         }
 
         if (booking.getSessions() != null && !booking.getSessions().isEmpty()) {
             return booking.getSessions().stream()
-                    .anyMatch(session ->
-                            overlapsWithSlot(slotDate, slot, session.getStartTime(), session.getEndTime()));
+                    .anyMatch(session -> overlapsWithSlot(slot, session.getStartTime(), session.getEndTime()));
         }
 
-        return overlapsWithSlot(
-                slotDate,
-                slot,
-                booking.getSessionStartTime(),
-                booking.getSessionEndTime()
-        );
+        return overlapsWithSlot(slot, booking.getSessionStartTime(), booking.getSessionEndTime());
     }
 
-    private boolean overlapsWithSlot(
-            LocalDate slotDate,
-            TimeSlot slot,
-            LocalDateTime bookingStart,
-            LocalDateTime bookingEnd
-    ) {
+    private boolean overlapsWithSlot(AvailabilitySlot slot, Instant bookingStart, Instant bookingEnd) {
         if (bookingStart == null || bookingEnd == null) {
             return false;
         }
 
-        if (!bookingStart.toLocalDate().equals(slotDate)) {
+        return bookingStart.isBefore(slot.getEndTimeUtc())
+                && bookingEnd.isAfter(slot.getStartTimeUtc());
+    }
+
+    private boolean blocksAvailability(Booking booking) {
+        if (booking == null || booking.getStatus() == null) {
             return false;
         }
 
-        LocalTime slotStart = LocalTime.parse(normalizeTimeString(slot.getStartTime()), FLEXIBLE_TIME_FORMATTER);
-        LocalTime slotEnd = LocalTime.parse(normalizeTimeString(slot.getEndTime()), FLEXIBLE_TIME_FORMATTER);
-
-        LocalTime bookingStartTime = bookingStart.toLocalTime();
-        LocalTime bookingEndTime = bookingEnd.toLocalTime();
-
-        return bookingStartTime.isBefore(slotEnd) && bookingEndTime.isAfter(slotStart);
+        return booking.getStatus() == BookingStatus.CONFIRMED
+                || booking.getStatus() == BookingStatus.PENDING
+                || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
     }
 
     private String normalizeTimeString(String time) {
@@ -587,38 +593,62 @@ public class AvailabilityManagementService {
             LocalTime parsed = LocalTime.parse(time, FLEXIBLE_TIME_FORMATTER);
             return parsed.format(NORMALIZED_TIME_FORMATTER);
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("Invalid time format: " + time);
+            throw new IllegalArgumentException("Invalid time format: " + time, e);
         }
     }
 
-    private LocalDate parseDate(String date) {
-        try {
-            return LocalDate.parse(date);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid date format: " + date);
+    private void validateDateSpecificDto(DateSpecificAvailabilityDto dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("DateSpecificAvailabilityDto cannot be null");
+        }
+        if (dto.getDayStartUtc() == null) {
+            throw new IllegalArgumentException("dayStartUtc is required");
+        }
+        if (dto.getSlots() == null) {
+            throw new IllegalArgumentException("slots are required");
         }
     }
 
     private void validateTeacherId(String teacherId) {
-        if (teacherId == null || teacherId.isBlank()) {
+        if (!hasText(teacherId)) {
             throw new IllegalArgumentException("Teacher ID is required");
         }
     }
 
-    private TeacherAvailabilityDto toDto(TeacherAvailability availability) {
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private AvailabilitySlotDto toSlotDto(AvailabilitySlot slot) {
+        return AvailabilitySlotDto.builder()
+                .startTimeUtc(slot.getStartTimeUtc())
+                .endTimeUtc(slot.getEndTimeUtc())
+                .isAvailable(slot.getIsAvailable())
+                .mode(slot.getMode())
+                .build();
+    }
+
+    private TeacherAvailabilityDto toTeacherAvailabilityDto(TeacherAvailability availability) {
         return TeacherAvailabilityDto.builder()
                 .id(availability.getId())
                 .teacherId(availability.getTeacherId())
-                .timezone(availability.getTimezone())
-                .weeklyAvailability(availability.getWeeklyAvailability())
+                .weeklyAvailability(
+                        availability.getWeeklyAvailability() != null
+                                ? availability.getWeeklyAvailability()
+                                : new HashMap<>()
+                )
                 .bufferTimeMinutes(availability.getBufferTimeMinutes())
                 .maxSessionsPerDay(availability.getMaxSessionsPerDay())
                 .oneOnOneEnabled(availability.getOneOnOneEnabled())
                 .groupEnabled(availability.getGroupEnabled())
                 .weeklyPattern(
                         WeeklyPatternDto.builder()
-                                .enabled(availability.getWeeklyPatternEnabled())
-                                .days(availability.getWeeklyPatternDays())
+                                .enabled(Boolean.TRUE.equals(availability.getWeeklyPatternEnabled()))
+                                .days(
+                                        availability.getWeeklyPatternDays() != null
+                                                ? availability.getWeeklyPatternDays()
+                                                : new ArrayList<>()
+                                )
                                 .timeStart(availability.getWeeklyPatternStart())
                                 .timeEnd(availability.getWeeklyPatternEnd())
                                 .build()

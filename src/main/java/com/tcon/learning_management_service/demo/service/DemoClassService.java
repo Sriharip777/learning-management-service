@@ -1,6 +1,5 @@
 package com.tcon.learning_management_service.demo.service;
 
-
 import com.tcon.learning_management_service.course.entity.Course;
 import com.tcon.learning_management_service.course.repository.CourseRepository;
 import com.tcon.learning_management_service.demo.dto.DemoClassDto;
@@ -12,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,47 +27,41 @@ public class DemoClassService {
 
     @Transactional
     public DemoClassDto scheduleDemoClass(String studentId, String studentName, String studentEmail,
-                                          String courseId, LocalDateTime scheduledStartTime,
+                                          String courseId, Instant scheduledStartTime,
                                           String studentNotes) {
         log.info("Scheduling demo class for student {} and course {}", studentId, courseId);
 
-        // Check demo limit
         if (!limitService.canBookDemo(studentId)) {
             throw new IllegalArgumentException("Student has reached the maximum demo class limit");
         }
 
-        // Get course
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
 
-        // Check if course offers demo
         if (!Boolean.TRUE.equals(course.getIsDemoAvailable())) {
             throw new IllegalArgumentException("This course does not offer demo classes");
         }
 
-        // Check if student already has a demo for this course
         if (demoRepository.existsByStudentIdAndCourseIdAndStatus(
                 studentId, courseId, DemoClass.DemoStatus.SCHEDULED)) {
             throw new IllegalArgumentException("Student already has a scheduled demo for this course");
         }
 
-        // Validate time is in future
-        if (scheduledStartTime.isBefore(LocalDateTime.now())) {
+        if (scheduledStartTime.isBefore(Instant.now())) {
             throw new IllegalArgumentException("Demo class must be scheduled in the future");
         }
 
         Integer duration = course.getDemoSessionDuration() != null ?
                 course.getDemoSessionDuration() : 30;
 
-        LocalDateTime scheduledEndTime = scheduledStartTime.plusMinutes(duration);
+        Instant scheduledEndTime = scheduledStartTime.plusSeconds(duration * 60L);
 
-        // Create demo class
         DemoClass demoClass = DemoClass.builder()
                 .studentId(studentId)
                 .studentName(studentName)
                 .studentEmail(studentEmail)
                 .teacherId(course.getTeacherId())
-                .teacherName(course.getTitle()) // Should get teacher name from teacher service
+                .teacherName(course.getTitle())
                 .courseId(courseId)
                 .courseName(course.getTitle())
                 .status(DemoClass.DemoStatus.SCHEDULED)
@@ -82,12 +75,10 @@ public class DemoClassService {
 
         DemoClass saved = demoRepository.save(demoClass);
 
-        // Update demo limit
         limitService.incrementDemoUsage(studentId);
 
         log.info("Demo class scheduled successfully: {}", saved.getId());
 
-        // Publish event
         eventPublisher.publishDemoClassScheduled(saved);
 
         return toDto(saved);
@@ -132,7 +123,7 @@ public class DemoClassService {
         }
 
         demo.setStatus(DemoClass.DemoStatus.IN_PROGRESS);
-        demo.setActualStartTime(LocalDateTime.now());
+        demo.setActualStartTime(Instant.now());
 
         DemoClass updated = demoRepository.save(demo);
         log.info("Demo class started: {}", demoId);
@@ -157,14 +148,13 @@ public class DemoClassService {
         }
 
         demo.setStatus(DemoClass.DemoStatus.COMPLETED);
-        demo.setActualEndTime(LocalDateTime.now());
+        demo.setActualEndTime(Instant.now());
         demo.setTeacherFeedback(teacherFeedback);
         demo.setTeacherRating(teacherRating);
 
         DemoClass updated = demoRepository.save(demo);
         log.info("Demo class completed: {}", demoId);
 
-        // Publish event
         eventPublisher.publishDemoClassCompleted(updated);
 
         return toDto(updated);
