@@ -22,7 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -192,60 +195,106 @@ public class AvailabilityManagementService {
     @Transactional
     public void saveDateSpecificAvailabilityBatch(BatchDateAvailabilityRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("BatchDateAvailabilityRequest cannot be null");
+            throw new IllegalArgumentException("Request is required");
+        }
+        if (!hasText(request.getTeacherId())) {
+            throw new IllegalArgumentException("teacherId is required");
+        }
+        if (!hasText(request.getTimezone())) {
+            throw new IllegalArgumentException("timezone is required");
+        }
+        if (request.getDateSlots() == null || request.getDateSlots().isEmpty()) {
+            throw new IllegalArgumentException("dateSlots is required");
         }
 
         validateTeacherId(request.getTeacherId());
 
-        TeacherAvailability availability = availabilityRepository.findByTeacherId(request.getTeacherId())
-                .orElseGet(() -> TeacherAvailability.builder()
-                        .teacherId(request.getTeacherId())
-                        .weeklyAvailability(new HashMap<>())
-                        .bufferTimeMinutes(DEFAULT_BUFFER_MINUTES)
-                        .oneOnOneEnabled(Boolean.TRUE)
-                        .groupEnabled(Boolean.FALSE)
-                        .build());
-
-        availability.setBufferTimeMinutes(
-                request.getBufferTimeMinutes() != null ? request.getBufferTimeMinutes() : DEFAULT_BUFFER_MINUTES
-        );
-        availability.setOneOnOneEnabled(Boolean.TRUE.equals(request.getOneOnOneEnabled()));
-        availability.setGroupEnabled(Boolean.TRUE.equals(request.getGroupEnabled()));
-        applyWeeklyPattern(availability, request.getWeeklyPattern());
-        availabilityRepository.save(availability);
-
-        if (request.getDateSlots() == null || request.getDateSlots().isEmpty()) {
-            return;
+        ZoneId zoneId;
+        try {
+            zoneId = ZoneId.of(request.getTimezone());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid timezone: " + request.getTimezone(), e);
         }
 
-        for (DateSpecificAvailabilityDto dateDto : request.getDateSlots()) {
-            if (dateDto == null) {
+        for (BatchDateAvailabilityRequest.DateSlotRequest dateSlot : request.getDateSlots()) {
+            if (dateSlot == null) {
                 continue;
             }
 
-            validateDateSpecificDto(dateDto);
+            if (!hasText(dateSlot.getDate())) {
+                throw new IllegalArgumentException("date is required");
+            }
+            if (dateSlot.getTimeSlots() == null || dateSlot.getTimeSlots().isEmpty()) {
+                throw new IllegalArgumentException("timeSlots are required for date " + dateSlot.getDate());
+            }
 
-            List<AvailabilitySlot> incomingSlots = normalizeAvailabilitySlots(
-                    toEntitySlots(dateDto.getSlots()),
-                    "date-specific slots for " + dateDto.getDayStartUtc()
+            LocalDate localDate;
+            try {
+                localDate = LocalDate.parse(dateSlot.getDate());
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException("Invalid date format: " + dateSlot.getDate() + ". Expected yyyy-MM-dd", e);
+            }
+
+            Instant dayStartUtc = localDate.atStartOfDay(zoneId).toInstant();
+            List<AvailabilitySlot> rawSlots = new ArrayList<>();
+
+            for (BatchDateAvailabilityRequest.TimeSlotRequest timeSlot : dateSlot.getTimeSlots()) {
+                if (timeSlot == null) {
+                    continue;
+                }
+
+                LocalTime localStartTime = parseLocalTime(timeSlot.getStartTime());
+                LocalTime localEndTime = parseLocalTime(timeSlot.getEndTime());
+
+                if (!localEndTime.isAfter(localStartTime)) {
+                    throw new IllegalArgumentException(
+                            "End time must be after start time for date " + dateSlot.getDate()
+                    );
+                }
+
+                ZonedDateTime localStartDateTime = ZonedDateTime.of(localDate, localStartTime, zoneId);
+                ZonedDateTime localEndDateTime = ZonedDateTime.of(localDate, localEndTime, zoneId);
+
+                Instant startUtc = localStartDateTime.toInstant();
+                Instant endUtc = localEndDateTime.toInstant();
+
+                rawSlots.add(AvailabilitySlot.builder()
+                        .startTimeUtc(startUtc)
+                        .endTimeUtc(endUtc)
+                        .isAvailable(timeSlot.getIsAvailable() != null ? timeSlot.getIsAvailable() : true)
+                        .mode(timeSlot.getMode() != null ? timeSlot.getMode() : SessionMode.ONE_ON_ONE)
+                        .build());
+            }
+
+            if (rawSlots.isEmpty()) {
+                throw new IllegalArgumentException("At least one valid time slot is required for date " + dateSlot.getDate());
+            }
+
+            List<AvailabilitySlot> finalSlots = deduplicateAndSortAvailabilitySlots(
+                    normalizeAvailabilitySlots(rawSlots, "date-specific availability for " + dateSlot.getDate())
             );
-
-            List<AvailabilitySlot> finalSlots = deduplicateAndSortAvailabilitySlots(incomingSlots);
-            validateNoUtcOverlaps(finalSlots, "date-specific availability for " + dateDto.getDayStartUtc());
+            validateNoUtcOverlaps(finalSlots, "date-specific availability for " + dateSlot.getDate());
 
             DateSpecificAvailability entity = dateSpecificRepository
-                    .findByTeacherIdAndDayStartUtc(request.getTeacherId(), dateDto.getDayStartUtc())
+                    .findByTeacherIdAndDayStartUtc(request.getTeacherId(), dayStartUtc)
                     .orElseGet(() -> DateSpecificAvailability.builder()
                             .teacherId(request.getTeacherId())
-                            .dayStartUtc(dateDto.getDayStartUtc())
+                            .dayStartUtc(dayStartUtc)
                             .build());
 
             entity.setTeacherId(request.getTeacherId());
-            entity.setDayStartUtc(dateDto.getDayStartUtc());
+            entity.setDayStartUtc(dayStartUtc);
             entity.setSlots(finalSlots);
-            entity.setBufferTimeMinutes(
-                    request.getBufferTimeMinutes() != null ? request.getBufferTimeMinutes() : DEFAULT_BUFFER_MINUTES
-            );
+
+            if (request.getBufferTimeMinutes() != null) {
+                entity.setBufferTimeMinutes(request.getBufferTimeMinutes());
+            }
+            if (request.getOneOnOneEnabled() != null) {
+                entity.setOneOnOneEnabled(request.getOneOnOneEnabled());
+            }
+            if (request.getGroupEnabled() != null) {
+                entity.setGroupEnabled(request.getGroupEnabled());
+            }
 
             dateSpecificRepository.save(entity);
         }
@@ -378,7 +427,7 @@ public class AvailabilityManagementService {
                 .startTime(normalizedStart)
                 .endTime(normalizedEnd)
                 .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
-                .mode(slot.getMode())
+                .mode(slot.getMode() != null ? slot.getMode() : SessionMode.ONE_ON_ONE)
                 .build();
     }
 
@@ -441,7 +490,7 @@ public class AvailabilityManagementService {
                         .startTimeUtc(slot.getStartTimeUtc())
                         .endTimeUtc(slot.getEndTimeUtc())
                         .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
-                        .mode(slot.getMode())
+                        .mode(slot.getMode() != null ? slot.getMode() : SessionMode.ONE_ON_ONE)
                         .build())
                 .toList();
     }
@@ -476,7 +525,7 @@ public class AvailabilityManagementService {
                 .startTimeUtc(slot.getStartTimeUtc())
                 .endTimeUtc(slot.getEndTimeUtc())
                 .isAvailable(slot.getIsAvailable() != null ? slot.getIsAvailable() : true)
-                .mode(slot.getMode())
+                .mode(slot.getMode() != null ? slot.getMode() : SessionMode.ONE_ON_ONE)
                 .build();
     }
 
@@ -654,5 +703,21 @@ public class AvailabilityManagementService {
                                 .build()
                 )
                 .build();
+    }
+
+    private LocalTime parseLocalTime(String value) {
+        if (!hasText(value)) {
+            throw new IllegalArgumentException("Time value is required");
+        }
+
+        try {
+            return LocalTime.parse(value, DateTimeFormatter.ISO_LOCAL_TIME);
+        } catch (DateTimeParseException ex) {
+            try {
+                return LocalTime.parse(value, DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (DateTimeParseException ex2) {
+                throw new IllegalArgumentException("Invalid time format: " + value);
+            }
+        }
     }
 }

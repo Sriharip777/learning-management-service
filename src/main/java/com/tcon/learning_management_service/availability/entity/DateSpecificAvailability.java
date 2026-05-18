@@ -24,13 +24,17 @@ public class DateSpecificAvailability {
 
     private String teacherId;
 
-    // Start of the UTC day for this availability group (e.g. 2026-05-15T00:00:00Z)
+    // Start of the UTC day for this availability group
     private Instant dayStartUtc;
 
     @Builder.Default
     private List<AvailabilitySlot> slots = new ArrayList<>();
 
     private Integer bufferTimeMinutes;
+
+    private Boolean oneOnOneEnabled;
+
+    private Boolean groupEnabled;
 
     @CreatedDate
     private Instant createdAt;

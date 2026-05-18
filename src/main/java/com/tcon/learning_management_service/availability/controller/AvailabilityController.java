@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,10 @@ public class AvailabilityController {
 
             log.info("Successfully set availability for teacher: {}", teacherId);
             return ResponseEntity.ok(availability);
+
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid request while setting availability for teacher {}: {}", teacherId, e.getMessage(), e);
+            return ResponseEntity.badRequest().build();
 
         } catch (Exception e) {
             log.error("Error setting availability for teacher {}: {}", teacherId, e.getMessage(), e);
@@ -155,6 +161,7 @@ public class AvailabilityController {
 
     @PostMapping("/date-specific/batch")
     public ResponseEntity<Map<String, Object>> saveDateSpecificAvailabilityBatch(
+            @RequestHeader("X-User-Id") String userId,
             @RequestBody BatchDateAvailabilityRequest request) {
 
         int count = request != null && request.getDateSlots() != null ? request.getDateSlots().size() : 0;
@@ -162,12 +169,19 @@ public class AvailabilityController {
         log.info("Date slots count: {}", count);
 
         try {
+            validateBatchRequestOwnership(userId, request);
             availabilityManagementService.saveDateSpecificAvailabilityBatch(request);
 
             log.info("Saved {} date-specific availability entries", count);
             return ResponseEntity.ok(Map.of(
                     "message", "Availability saved successfully",
                     "count", count
+            ));
+
+        } catch (IllegalArgumentException e) {
+            log.error("Failed to save date-specific availability: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Failed to save availability: " + e.getMessage()
             ));
 
         } catch (Exception e) {
@@ -201,21 +215,75 @@ public class AvailabilityController {
     @DeleteMapping("/date-specific/{teacherId}/{dayStartUtc}")
     public ResponseEntity<Map<String, String>> deleteDateSpecificAvailability(
             @PathVariable String teacherId,
-            @PathVariable String dayStartUtc) {
+            @PathVariable String dayStartUtc,
+            @RequestHeader("X-User-Id") String userId) {
 
         log.info("Deleting date-specific availability for teacher {} on {}", teacherId, dayStartUtc);
 
         try {
+            if (!userId.equals(teacherId)) {
+                throw new IllegalArgumentException("Unauthorized: You can only delete your own availability");
+            }
+
             Instant utcDayStart = Instant.parse(dayStartUtc);
             availabilityManagementService.deleteDateSpecificAvailability(teacherId, utcDayStart);
 
             return ResponseEntity.ok(Map.of("message", "Availability deleted successfully"));
+
+        } catch (DateTimeParseException e) {
+            log.error("Invalid UTC dayStartUtc format: {}", dayStartUtc, e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Invalid dayStartUtc. Expected ISO-8601 UTC format, e.g. 2026-05-14T00:00:00Z"
+            ));
+
+        } catch (IllegalArgumentException e) {
+            log.error("Failed to delete date-specific availability: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Failed to delete availability: " + e.getMessage()
+            ));
 
         } catch (Exception e) {
             log.error("Failed to delete date-specific availability", e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "message", "Failed to delete availability: " + e.getMessage()
             ));
+        }
+    }
+
+    @GetMapping("/timezones")
+    public ResponseEntity<List<String>> getTimezones() {
+        List<String> zoneIds = ZoneId.getAvailableZoneIds().stream()
+                .sorted()
+                .toList();
+
+        return ResponseEntity.ok(zoneIds);
+    }
+
+    private void validateBatchRequestOwnership(String userId, BatchDateAvailabilityRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+
+        if (request.getTeacherId() == null || request.getTeacherId().isBlank()) {
+            throw new IllegalArgumentException("teacherId is required");
+        }
+
+        if (!userId.equals(request.getTeacherId())) {
+            throw new IllegalArgumentException("Unauthorized: You can only save your own availability");
+        }
+
+        if (request.getTimezone() == null || request.getTimezone().isBlank()) {
+            throw new IllegalArgumentException("timezone is required");
+        }
+
+        try {
+            ZoneId.of(request.getTimezone());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid timezone: " + request.getTimezone());
+        }
+
+        if (request.getDateSlots() == null || request.getDateSlots().isEmpty()) {
+            throw new IllegalArgumentException("At least one date slot is required");
         }
     }
 
